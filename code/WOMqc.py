@@ -476,34 +476,77 @@ class WOMqc:
     Returns:
         None
     """
-    def heatup(self):
-        self.logger.info(f"Pulse LEDs for {self.heatupmin} min")
-        if self.dry_run:
-            return
-        else:
-            self.device.set_output_termination(channel=1, termination="50Ohm")#Set output configuartion 
-            self.device.set_output_termination(channel=2, termination="50Ohm")#Set output configuartion 
-            # Trigger on input Channel ch, rising edge, 1V 
-     
-            self.device.generate_waveform(
-                    channel=1, type="Pulse", 
-                    amplitude=1.9, 
-                    frequency=1e3, 
-                    offset=0.95, 
-                    edge_time=2e-9, 
-                    pulse_width=self.pulsewidth_ch1,  
-                    phase=0) 
-            self.device.generate_waveform(
-                    channel=2, type="Pulse", 
-                    amplitude=1.9, 
-                    frequency=1e3, 
-                    offset=0.95, 
-                    edge_time=2e-9, 
-                    pulse_width=self.pulsewidth_ch1,  
-                    phase=0) 
-            time.sleep(self.heatupmin * 60)
-            self.device.generate_waveform(channel=1, type="Off")#turn output (LED) off
-            self.device.generate_waveform(channel=2, type="Off")#turn output (LED) off       
+def heatup(self, T_room, deltaT_in = 8.07, deltaT_out = 8.4):
+    self.logger.info("Heating LEDs to operating temperature.")
+    if self.dry_run:
+        return
+    else:
+        self.device.set_output_termination(channel=1, termination="50Ohm")#Set output configuartion 
+        self.device.set_output_termination(channel=2, termination="50Ohm")#Set output configuartion 
+        # Trigger on input Channel ch, rising edge, 1V 
+        response = self.write_read("1")
+        self.logger.info(f"temperature {response}")  
+        temp = ast.literal_eval(response)
+        temp_in, temp_out = temp[0], temp[1]
+        self.device.generate_waveform(
+            channel=1, type="Pulse", 
+            amplitude=1.9, 
+            frequency=1e6, 
+            offset=0.95, 
+            edge_time=2e-9, 
+            pulse_width=self.pulsewidth_ch1,  
+            phase=0) 
+        self.device.generate_waveform(
+            channel=2, type="Pulse", 
+            amplitude=1.9, 
+            frequency=1e6, 
+            offset=0.95, 
+            edge_time=2e-9, 
+            pulse_width=self.pulsewidth_ch2,  
+            phase=0.1) 
+            
+        while temp_in <= T_room + deltaT_in and temp_out <= T_room + deltaT_out: 
+            response = self.write_read("1")
+            self.logger.info(f"temperature {response}")  
+            temp = ast.literal_eval(response)
+            temp_in, temp_out = temp[0], temp[1]
+            time.sleep(60)
+
+        
+        self.device.generate_waveform(
+                channel=1, type="Pulse", 
+                amplitude=1.9, 
+                frequency=1e3, 
+                offset=0.95, 
+                edge_time=2e-9, 
+                pulse_width=self.pulsewidth_ch1,    
+                phase=0) 
+        self.device.generate_waveform(
+                channel=2, type="Pulse", 
+                amplitude=1.9, 
+                frequency=1e3, 
+                offset=0.95, 
+                edge_time=2e-9, 
+                pulse_width=self.pulsewidth_ch2,    
+                phase=0.1) 
+            
+        history_in = [temp_in]
+        history_out = [temp_out]
+        while True: 
+                response = self.write_read("1")
+                self.logger.info(f"temperature {response}")  
+                temp = ast.literal_eval(response)
+                temp_in, temp_out = temp[0], temp[1]
+                history_in.append(temp_in)
+                history_out.append(temp_out)
+                if len(history_in) >= 30:
+                    if (np.ptp(history_in[-30:])< 0.01) and (np.ptp(history_out[-30:])) < 0.02:
+                        break
+                time.sleep(1)
+
+        self.device.generate_waveform(channel=1, type="Off")#turn output (LED) off
+        self.device.generate_waveform(channel=2, type="Off")#turn output (LED) off   
+        return    
 
     def measurement_without_WOM(self):
         self.waveforms = []
