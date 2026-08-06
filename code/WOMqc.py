@@ -57,7 +57,7 @@ Attributes:
     acquisition timing parameters
 """
 class WOMqc:
-    def __init__(self, device_ip, WOMname, ni, nj, rep, pulsewidth_ch1, pulsewidth_ch2, voltage_range_PMT,  voltage_range_SiPM , rec_time_min, rec_time_max, int_window_min_PMT, int_window_max_PMT, int_window_min_SiPM, int_window_max_SiPM, frame_length_max, heatupmin = 20, plot_waveform=False, plot_heatmap = False, PMsoff= False, dry_run=False, date= None):
+    def __init__(self, device_ip, WOMname, ni, nj, rep, pulsewidth_ch1, pulsewidth_ch2, voltage_range_PMT,  voltage_range_SiPM , rec_time_min, rec_time_max, int_window_min_PMT, int_window_max_PMT, int_window_min_SiPM, int_window_max_SiPM, frame_length_max, heatup_roomtemp = False, plot_waveform=False, plot_heatmap = False, PMsoff= False, dry_run=False, date= None):
         self.device_ip = device_ip  #IP adress of the Moku device
         self.WOMname = WOMname #characteristic WOM name
         self.ni = ni #number of positions in i direction
@@ -78,7 +78,7 @@ class WOMqc:
         
         self.frame_length_max = frame_length_max #number of bins in the frame 
 
-        self.heatupmin = heatupmin
+        self.heatup_roomtemp = heatup_roomtemp
         self.plot_waveform = plot_waveform #if true, plot example waveforms during the scan
         self.plot_heatmap = plot_heatmap #if true, plot heatmaps after the measurement
 
@@ -476,7 +476,7 @@ class WOMqc:
     Returns:
         None
     """
-    def heatup(self, T_room, deltaT_in = 8.07, deltaT_out = 8.4):
+    def heatup(self, deltaT_in = 8.07, deltaT_out = 8.4):
         self.logger.info("Heating LEDs to operating temperature.")
         if self.dry_run:
             return
@@ -484,6 +484,7 @@ class WOMqc:
             self.device.set_output_termination(channel=1, termination="50Ohm")#Set output configuartion 
             self.device.set_output_termination(channel=2, termination="50Ohm")#Set output configuartion 
             # Trigger on input Channel ch, rising edge, 1V 
+            T_room = self.heatup_roomtemp
             response = self.write_read("1")
             self.logger.info(f"temperature {response}")  
             temp = ast.literal_eval(response)
@@ -2578,7 +2579,7 @@ class WOMqc:
             self.configure_scope()
             self.logger.info(f"Configured Hardware")
             self.logger.info(f"Pulse LEDs for 20min")
-            if self.heatupmin:
+            if self.heatup_roomtemp:
                 self.heatup()    
             self.run_darkcount_scan(darkcount, external_trigger)
             self.savecsv()
@@ -2626,7 +2627,7 @@ class WOMqc:
             self.motor_on() 
             self.move_home()
             self.logger.info(f"Move Home")
-            if self.heatupmin:
+            if self.heatup_roomtemp:
                 self.heatup()    
             self.measurement_without_WOM()
             response = self.step_down()
