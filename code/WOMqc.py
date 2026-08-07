@@ -477,7 +477,7 @@ class WOMqc:
     Returns:
         None
     """
-    def heatup(self, deltaT_in = 8.07, deltaT_out = 8.4):
+    def heatup(self, deltaT_in = 9, deltaT_out = 10):
         self.logger.info("Heating LEDs to operating temperature.")
         if self.dry_run:
             return
@@ -490,14 +490,14 @@ class WOMqc:
             self.logger.info(f"temperature {response}")  
             temp = ast.literal_eval(response)
             temp_in, temp_out = temp[0], temp[1]
-            self.device.generate_waveform(
+            self.device.generate_waveform( 
                 channel=1, type="Pulse", 
                 amplitude=1.9, 
                 frequency=1e6, 
                 offset=0.95, 
                 edge_time=2e-9, 
                 pulse_width=self.pulsewidth_ch1,  
-                phase=0) 
+                phase=0) #inner LED
             self.device.generate_waveform(
                 channel=2, type="Pulse", 
                 amplitude=1.9, 
@@ -505,17 +505,16 @@ class WOMqc:
                 offset=0.95, 
                 edge_time=2e-9, 
                 pulse_width=self.pulsewidth_ch2,  
-                phase=0.1) 
+                phase=0.1) #outer LED
                 
-            while temp_in <= T_room + deltaT_in and temp_out <= T_room + deltaT_out: 
+            while temp_in <= T_room + deltaT_in: # Get PCB inside of the WOM to operational temperature
                 response = self.write_read("1")
                 self.logger.info(f"temperature {response}")  
                 temp = ast.literal_eval(response)
                 temp_in, temp_out = temp[0], temp[1]
                 time.sleep(60)
-    
-            
-            self.device.generate_waveform(
+ 
+            self.device.generate_waveform( # swich to lower frequency to avoid overheating the inner LED
                     channel=1, type="Pulse", 
                     amplitude=1.9, 
                     frequency=1e3, 
@@ -523,7 +522,15 @@ class WOMqc:
                     edge_time=2e-9, 
                     pulse_width=self.pulsewidth_ch1,    
                     phase=0) 
-            self.device.generate_waveform(
+
+            while temp_out <= T_room + deltaT_out: # Get outside PCB of the WOM to operational temperature
+                response = self.write_read("1")
+                self.logger.info(f"temperature {response}")  
+                temp = ast.literal_eval(response)
+                temp_in, temp_out = temp[0], temp[1]
+                time.sleep(60)
+
+            self.device.generate_waveform( # swich to lower frequency to avoid overheating the inner LED
                     channel=2, type="Pulse", 
                     amplitude=1.9, 
                     frequency=1e3, 
