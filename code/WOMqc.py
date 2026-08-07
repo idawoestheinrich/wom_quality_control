@@ -57,7 +57,7 @@ Attributes:
     acquisition timing parameters
 """
 class WOMqc:
-    def __init__(self, device_ip, WOMname, ni, nj, rep, pulsewidth_ch1, pulsewidth_ch2, voltage_range_PMT,  voltage_range_SiPM , rec_time_min, rec_time_max, int_window_min_PMT, int_window_max_PMT, int_window_min_SiPM, int_window_max_SiPM, frame_length_max, heatup_roomtemp = False, plot_waveform=False, plot_heatmap = False, PMsoff= False, dry_run=False, date= None):
+    def __init__(self, device_ip, WOMname, ni, nj, rep, pulsewidth_ch1, pulsewidth_ch2, voltage_range_PMT,  voltage_range_SiPM , rec_time_min, rec_time_max, int_window_min_PMT, int_window_max_PMT, int_window_min_SiPM, int_window_max_SiPM, frame_length_max, heatup_roomtemp = False, heatupmin = False,  plot_waveform=False, plot_heatmap = False, PMsoff= False, dry_run=False, date= None):
         self.device_ip = device_ip  #IP adress of the Moku device
         self.WOMname = WOMname #characteristic WOM name
         self.ni = ni #number of positions in i direction
@@ -79,6 +79,7 @@ class WOMqc:
         self.frame_length_max = frame_length_max #number of bins in the frame 
 
         self.heatup_roomtemp = heatup_roomtemp
+        self.heatupmin = heatupmin
         self.plot_waveform = plot_waveform #if true, plot example waveforms during the scan
         self.plot_heatmap = plot_heatmap #if true, plot heatmaps after the measurement
 
@@ -2422,9 +2423,15 @@ class WOMqc:
     def readbin(self, i = 1, name="waveforms"):
         filename = self.foldername / f"{self.filename}_{name}.bin"
         if name == "baseline_integrated_data_eventwise":    
-            N, rep, frame_length = self.nj*self.ni*i, self.rep, 1
-        else:    
-            N, rep, frame_length = self.nj*self.ni*i, self.rep, self.frame_length_max
+            if self.integrated_data["j"][0] == 999:
+                N, rep, frame_length = self.nj*self.ni*i+1, self.rep, 1
+            else:
+                N, rep, frame_length = self.nj*self.ni*i, self.rep, 1    
+        else: 
+            if self.integrated_data["j"][0] == 999:  
+                N, rep, frame_length = self.nj*self.ni*i+1, self.rep, self.frame_length_max
+            else:
+                N, rep, frame_length = self.nj*self.ni*i, self.rep, self.frame_length_max    
         shape = (N, rep, frame_length)
         with open(filename, "rb") as f:
             j_arr = np.fromfile(f, dtype=np.int32, count=N)
