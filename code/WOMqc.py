@@ -13,7 +13,7 @@ import logging
 
 from scipy.special import erfc
 from scipy.ndimage import gaussian_filter1d
-#from moku.instruments import Oscilloscope
+from moku.instruments import Oscilloscope
 #to convert data from arduino to array
 import ast
 
@@ -187,11 +187,11 @@ class WOMqc:
         else:
             self.device.set_frontend(
                 channel=1, impedance="50Ohm",
-                coupling="DC", range=self.voltage_range_PMT
+                coupling="DC", range= self.voltage_range_PMT
             )
             self.device.set_frontend(
                 channel=2, impedance="50Ohm",
-                coupling="DC", range=self.voltage_range_SiPM
+                coupling="DC", range= self.voltage_range_SiPM
             )
             self.device.set_frontend(
                 channel=3, impedance="50Ohm",
@@ -206,7 +206,7 @@ class WOMqc:
             self.device.set_timebase(
                 self.rec_time_min,
                 self.rec_time_max,
-                max_length=self.frame_length_max
+                max_length = self.frame_length_max
             )
 
     """
@@ -271,16 +271,18 @@ class WOMqc:
             self.logger.debug(f"[DRY-RUN] turn motor on")
         else:
             response = self.write_read("11")
-            self.logger.info(response)
             time.sleep(1)
+            self.logger.info(response)
+            
 
     def motor_off(self):
         if self.dry_run:
             self.logger.debug(f"[DRY-RUN] turn motor off")
         else:
             response = self.write_read("12")
+            time.sleep(1) 
             self.logger.info(response)
-            time.sleep(1)    
+            
 
     """
     Move system to home position.
@@ -300,17 +302,19 @@ class WOMqc:
         else:
             for _ in range(5):
                 response = self.write_read("5")
-                self.logger.info(response)
                 time.sleep(1)
+                self.logger.info(response)                
             #rotate to magnet
             if self.j <= 4:
                 for _ in range(4):
                     response = self.write_read("2")
                     self.logger.info(response)
                 response = self.write_read("8")
+                time.sleep(1)
                 self.logger.info(response)
             else:
                 response = self.write_read("8")
+                time.sleep(1)
                 self.logger.info(response)  
 
     """
@@ -348,7 +352,7 @@ class WOMqc:
         if self.dry_run:
             return "[DRY-RUN] move from bottom to WOM top"
         else:
-            for _ in range(3):
+            for _ in range(2):
                 response = self.write_read("5")
                 time.sleep(1) 
                 self.logger.info(response)
@@ -477,7 +481,7 @@ class WOMqc:
     Returns:
         None
     """
-    def heatup(self, deltaT_in = 8.07, deltaT_out = 8.4):
+    def heatup(self, deltaT_in = 8, deltaT_out = 8.8):
         self.logger.info("Heating LEDs to operating temperature.")
         if self.dry_run:
             return
@@ -544,7 +548,7 @@ class WOMqc:
                     if len(history_in) >= 30:
                         if (np.ptp(history_in[-30:])< 0.01) and (np.ptp(history_out[-30:])) < 0.02:
                             break
-                    time.sleep(1)
+                    time.sleep(3)
     
             self.device.generate_waveform(channel=1, type="Off")#turn output (LED) off
             self.device.generate_waveform(channel=2, type="Off")#turn output (LED) off   
@@ -672,7 +676,10 @@ class WOMqc:
                     if self.PMsoff:
                         threshold = 0
                     else:
-                        threshold = 1e-10
+                        if channel == "ch1":
+                            threshold = 8e-11
+                        else:  
+                            threshold = 1e-10  
 
                     if np.abs(area) >= threshold: #make sure that a waveform was integrated
                         int_data[i,count] = -area 
@@ -692,7 +699,10 @@ class WOMqc:
                     if self.PMsoff:
                         threshold = 0
                     else:
-                        threshold = 1e-10
+                        if channel == "ch1":
+                            threshold = 8e-11
+                        else:  
+                            threshold = 1e-10  
                     
                     if np.abs(area) >= threshold: #make sure that a waveform was integrated
                         if channel == "ch2":
@@ -800,6 +810,15 @@ class WOMqc:
         else:
             response = self.write_read("1")
             self.logger.info(f"temperature {response}")   
+
+        #if self.dry_run == False:
+            temp = ast.literal_eval(response)
+                    
+            temp_in, temp_out = temp[0], temp[1]
+                #self.logger.info(f"Temperature in={temp_in}, out={temp_out}")
+        
+            row["temp_in"] = temp_in
+            row["temp_out"] = temp_out 
         
         for ch, tag in [(1, "in"), (2, "out")]:
             (
@@ -835,14 +854,7 @@ class WOMqc:
         #            a = self.write_read("1")
         #            time.sleep(0.05)
         #            self.logger.info("No temperature measured") 
-        if self.dry_run == False:
-            temp = ast.literal_eval(response)
-            
-        temp_in, temp_out = temp[0], temp[1]
-        #self.logger.info(f"Temperature in={temp_in}, out={temp_out}")
-
-        row["temp_in"] = temp_in
-        row["temp_out"] = temp_out 
+        
              
         return waveforms, row
     '''
