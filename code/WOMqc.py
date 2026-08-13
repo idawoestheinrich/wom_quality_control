@@ -481,7 +481,7 @@ class WOMqc:
     Returns:
         None
     """
-    def heatup(self, deltaT_in = 8, deltaT_out = 8.8):
+    def heatup(self, deltaT_in = 7.25, deltaT_out = 8):
         self.logger.info("Heating LEDs to operating temperature.")
         if self.dry_run:
             return
