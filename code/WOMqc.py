@@ -57,7 +57,7 @@ Attributes:
     acquisition timing parameters
 """
 class WOMqc:
-    def __init__(self, device_ip, WOMname, ni, nj, rep, pulsewidth_ch1, pulsewidth_ch2, voltage_range_PMT,  voltage_range_SiPM , rec_time_min, rec_time_max, int_window_min_PMT, int_window_max_PMT, int_window_min_SiPM, int_window_max_SiPM, frame_length_max, heatup_roomtemp = False, heatupmin = False,  plot_waveform=False, plot_heatmap = False, PMsoff= False, dry_run=False, date= None):
+    def __init__(self, device_ip, WOMname, ni, nj, rep, pulsewidth_ch1, pulsewidth_ch2, voltage_range_PMT,  voltage_range_SiPM , rec_time_min, rec_time_max, int_window_min_PMT, int_window_max_PMT, int_window_min_SiPM, int_window_max_SiPM, frame_length_max, sipm_voltage = 40.7, heatup_roomtemp = False, heatupmin = False,  plot_waveform=False, plot_heatmap = False, PMsoff= False, dry_run=False, date= None):
         self.device_ip = device_ip  #IP adress of the Moku device
         self.WOMname = WOMname #characteristic WOM name
         self.ni = ni #number of positions in i direction
@@ -75,9 +75,9 @@ class WOMqc:
         self.int_window_max_PMT = int_window_max_PMT
         self.int_window_min_SiPM = int_window_min_SiPM #integration window relativ to maximum
         self.int_window_max_SiPM = int_window_max_SiPM
-        
         self.frame_length_max = frame_length_max #number of bins in the frame 
 
+        self.sipm_voltage = sipm_voltage
         self.heatup_roomtemp = heatup_roomtemp
         self.heatupmin = heatupmin
         self.plot_waveform = plot_waveform #if true, plot example waveforms during the scan
@@ -187,11 +187,11 @@ class WOMqc:
         else:
             self.device.set_frontend(
                 channel=1, impedance="50Ohm",
-                coupling="DC", range=self.voltage_range_PMT
+                coupling="DC", range= self.voltage_range_PMT
             )
             self.device.set_frontend(
                 channel=2, impedance="50Ohm",
-                coupling="DC", range=self.voltage_range_SiPM
+                coupling="DC", range= self.voltage_range_SiPM
             )
             self.device.set_frontend(
                 channel=3, impedance="50Ohm",
@@ -206,7 +206,7 @@ class WOMqc:
             self.device.set_timebase(
                 self.rec_time_min,
                 self.rec_time_max,
-                max_length=self.frame_length_max
+                max_length = self.frame_length_max
             )
 
     """
@@ -271,16 +271,18 @@ class WOMqc:
             self.logger.debug(f"[DRY-RUN] turn motor on")
         else:
             response = self.write_read("11")
-            self.logger.info(response)
             time.sleep(1)
+            self.logger.info(response)
+            
 
     def motor_off(self):
         if self.dry_run:
             self.logger.debug(f"[DRY-RUN] turn motor off")
         else:
             response = self.write_read("12")
+            time.sleep(1) 
             self.logger.info(response)
-            time.sleep(1)    
+            
 
     """
     Move system to home position.
@@ -300,17 +302,19 @@ class WOMqc:
         else:
             for _ in range(5):
                 response = self.write_read("5")
-                self.logger.info(response)
                 time.sleep(1)
+                self.logger.info(response)                
             #rotate to magnet
             if self.j <= 4:
                 for _ in range(4):
                     response = self.write_read("2")
                     self.logger.info(response)
                 response = self.write_read("8")
+                time.sleep(1)
                 self.logger.info(response)
             else:
                 response = self.write_read("8")
+                time.sleep(1)
                 self.logger.info(response)  
 
     """
@@ -348,7 +352,7 @@ class WOMqc:
         if self.dry_run:
             return "[DRY-RUN] move from bottom to WOM top"
         else:
-            for _ in range(3):
+            for _ in range(2):
                 response = self.write_read("5")
                 time.sleep(1) 
                 self.logger.info(response)
@@ -477,7 +481,7 @@ class WOMqc:
     Returns:
         None
     """
-    def heatup(self, deltaT_in = 9, deltaT_out = 10):
+    def heatup(self, deltaT_in = 7.25, deltaT_out = 8):
         self.logger.info("Heating LEDs to operating temperature.")
         if self.dry_run:
             return
@@ -551,7 +555,7 @@ class WOMqc:
                     if len(history_in) >= 30:
                         if (np.ptp(history_in[-30:])< 0.01) and (np.ptp(history_out[-30:])) < 0.02:
                             break
-                    time.sleep(1)
+                    time.sleep(3)
     
             self.device.generate_waveform(channel=1, type="Off")#turn output (LED) off
             self.device.generate_waveform(channel=2, type="Off")#turn output (LED) off   
@@ -679,7 +683,10 @@ class WOMqc:
                     if self.PMsoff:
                         threshold = 0
                     else:
-                        threshold = 1e-10
+                        if channel == "ch1":
+                            threshold = 8e-11
+                        else:  
+                            threshold = 1e-10  
 
                     if np.abs(area) >= threshold: #make sure that a waveform was integrated
                         int_data[i,count] = -area 
@@ -699,7 +706,10 @@ class WOMqc:
                     if self.PMsoff:
                         threshold = 0
                     else:
-                        threshold = 1e-10
+                        if channel == "ch1":
+                            threshold = 8e-11
+                        else:  
+                            threshold = 1e-10  
                     
                     if np.abs(area) >= threshold: #make sure that a waveform was integrated
                         if channel == "ch2":
@@ -807,6 +817,15 @@ class WOMqc:
         else:
             response = self.write_read("1")
             self.logger.info(f"temperature {response}")   
+
+        #if self.dry_run == False:
+            temp = ast.literal_eval(response)
+                    
+            temp_in, temp_out = temp[0], temp[1]
+                #self.logger.info(f"Temperature in={temp_in}, out={temp_out}")
+        
+            row["temp_in"] = temp_in
+            row["temp_out"] = temp_out 
         
         for ch, tag in [(1, "in"), (2, "out")]:
             (
@@ -842,14 +861,7 @@ class WOMqc:
         #            a = self.write_read("1")
         #            time.sleep(0.05)
         #            self.logger.info("No temperature measured") 
-        if self.dry_run == False:
-            temp = ast.literal_eval(response)
-            
-        temp_in, temp_out = temp[0], temp[1]
-        #self.logger.info(f"Temperature in={temp_in}, out={temp_out}")
-
-        row["temp_in"] = temp_in
-        row["temp_out"] = temp_out 
+        
              
         return waveforms, row
     '''
@@ -1141,7 +1153,7 @@ class WOMqc:
         metadata_file = self.foldername / "metadata.txt"
         with open(metadata_file, "w") as f:
             for key, value in vars(self).items():
-                if key == "logger" or key == "i" or key == "j" or key == "device" or key == "arduino" or key == "waveforms" or key == "integrated_data":
+                if key == "logger" or key == "i" or key == "j" or key == "device" or key == "arduino" or key == "waveforms" or key == "integrated_data" or key == "baseline_wf" or key == "baseline_integrated_data" or key == "baseline_integrated_data_eventwise":
                     continue  # skip logger, i, j, device, arduino, waveforms, integrated_data
                 f.write(f"{key}: {value}\n")
 
@@ -1384,12 +1396,13 @@ class WOMqc:
                         int_window_min,
                         int_window_max
                     )
+                    if area != 0:
+                        integral.append(sign * area)
+                    else:
+                        print(row, wf, "area = 0") 
 
-                    integral.append(sign * area)
-                    
-
-                integrals.append(np.mean(integral))
-                std_devs.append(np.std(integral))
+                integrals.append(integral[integral != 0].mean())
+                std_devs.append(integral[integral != 0].std(ddof=1))
 
                 PM_int.append(np.array(integral))
 
@@ -1541,14 +1554,14 @@ class WOMqc:
                 vals = np.array(vals).flatten()
 
                 # Mean value of the group
-                group_means.append(np.mean(vals))
+                group_means.append(vals[vals != 0].mean())
 
                 # Standard deviation of the group
-                group_stds.append(np.std(vals, ddof=1))
+                group_stds.append(vals[vals != 0].std(ddof=1))
 
                 # Standard error of the mean
                 group_sem.append(
-                    np.std(vals, ddof=1) / np.sqrt(len(vals))
+                    vals[vals != 0].std(ddof=1) / np.sqrt(len(vals[vals != 0]))
                 )
             # Use number of groups if ny was not specified
             if ny is None:
@@ -1644,57 +1657,99 @@ class WOMqc:
         # Mapping of signal channels to their
         # corresponding reference channels
         # ----------------------------------------
-        ratio_map = {
-            "PMT_in": "SiPMin_in",
-            "SiPMout_in": "SiPMin_in",
-            "PMT_out": "SiPMout_out",
-            "SiPMin_out": "SiPMout_out",
-        }
         if self.baseline_integrated_data_eventwise == None:
             ValueError("self.baseline_integrated_data_eventwise does not exist.\n Please run load() with option redo=True")
-        else:    
+    
+        else: 
+            if self.baseline_integrated_data_eventwise.get("SiPMin_in_gain") is not None:
+                ratio_map = {
+                      "PMT_in": "SiPMin_in_gain",
+                      "SiPMout_in_gain": "SiPMin_in_gain",
+                      "PMT_out": "SiPMout_out_gain",
+                      "SiPMin_out_gain": "SiPMout_out_gain"
+                }  
+            else:
+                ratio_map = {
+                        "PMT_in": "SiPMin_in",
+                        "SiPMout_in": "SiPMin_in",
+                        "PMT_out": "SiPMout_out",
+                        "SiPMin_out": "SiPMout_out"
+                } 
             for pm, ref in ratio_map.items():
-                # Event-wise ratio statistics
                 ratios_mean = []
                 ratios_std = []
                 Ratios = [] 
+
                 # Loop over all events
                 for pm_row, ref_row in zip(
                     self.baseline_integrated_data_eventwise[pm],
                     self.baseline_integrated_data_eventwise[ref]
                 ):
-                    # Integrated pulse areas for all waveforms
-                    # belonging to the current event
-                    pm_int = []
-                    ref_int = []
+                    # Convert rows to 1D float arrays
+                    pm_arr = np.array(pm_row, dtype=float)
+                    ref_arr = np.array(ref_row, dtype=float)
 
-                    # Loop over all waveform pairs within the event
-                    for area_pm, area_ref in zip(pm_row, ref_row):
-                        # Store integrated pulse areas
-                        pm_int.append(area_pm)
-                        ref_int.append(area_ref)
+                    # Calculate ratio element-wise; place np.nan where ref_arr == 0
+                    with np.errstate(divide='ignore', invalid='ignore'):
+                        ratios = np.where(ref_arr != 0, pm_arr / ref_arr, np.nan)
 
-                    # Convert to numpy arrays for vectorized operations
-                    pm_int = np.array(pm_int)
-                    ref_int = np.array(ref_int)
-
-                    # Calculate waveform-by-waveform ratios
-                    if "PMT" in pm:
-                        ratios = pm_int / ref_int
-                    else:  
-                        ratios = pm_int / ref_int  
-
-                    # Calculate event-wise statistics
-                    ratios_mean.append(np.mean(ratios))
-                    ratios_std.append(np.std(ratios))
+                    # Calculate statistics while ignoring np.nan entries
+                    ratios_mean.append(np.nanmean(ratios))
+                    ratios_std.append(np.nanstd(ratios))
                     Ratios.append(ratios)
 
-                # Store results in the integrated-data dataframe/dictionary
+                # Store results
                 self.baseline_integrated_data[f"{pm}_ref"] = np.array(ratios_mean)
                 self.baseline_integrated_data[f"{pm}_ref_std"] = np.array(ratios_std)
-                self.baseline_integrated_data_eventwise[f"{pm}_ref"] = np.array(Ratios)
+                self.baseline_integrated_data_eventwise[f"{pm}_ref"] = np.array(Ratios, dtype=object)
 
-            self.savecsv(name="baseline_integrated_data")    
+                self.savecsv(name="baseline_integrated_data")    
+                # Loop over all events
+                #for pm_row, ref_row in zip(
+                    #self.baseline_integrated_data_eventwise[pm],
+                    #self.baseline_integrated_data_eventwise[ref]
+                #):
+                    ## Integrated pulse areas for all waveforms
+                    ## belonging to the current event
+                    #pm_int = []
+                    #ref_int = []
+#
+                    ## Loop over all waveform pairs within the event
+                    #count = 0
+                    #for area_pm, area_ref in zip(pm_row, ref_row):
+                        ## Store integrated pulse areas
+                        #if area_ref != 0:
+                            #pm_int.append(area_pm)
+                            #ref_int.append(area_ref)
+                        #else:
+                            #print(ref, count, "area_ref = 0:") 
+                            #pm_int.append(None)
+                            #ref_int.append(None)
+#
+                        #count += 1    
+#
+                    ## Convert to numpy arrays for vectorized operations
+                    #pm_int = np.array(pm_int)
+                    #ref_int = np.array(ref_int)
+#
+                    ## Calculate waveform-by-waveform ratios
+                    #if "PMT" in pm:
+                        #ratios = pm_int / ref_int
+                    #else:  
+                        #ratios = pm_int / ref_int  
+                    ##else:
+                     ##   print(pm_row, ref_row, "ref_int = 0")
+                    ## Calculate event-wise statistics
+                    #ratios_mean.append(np.mean(ratios))
+                    #ratios_std.append(np.std(ratios))
+                    #Ratios.append(ratios)
+#
+                ## Store results in the integrated-data dataframe/dictionary
+                #self.baseline_integrated_data[f"{pm}_ref"] = np.array(ratios_mean)
+                #self.baseline_integrated_data[f"{pm}_ref_std"] = np.array(ratios_std)
+                #self.baseline_integrated_data_eventwise[f"{pm}_ref"] = np.array(Ratios)
+
+            
             
 
     
@@ -2542,6 +2597,7 @@ class WOMqc:
                 print("Baseline data not found. Generating...")
 
                 obj.create_baseline_data(window=window, sigma=sigma, smooth_method=smooth_method)
+                #obj.apply_sipm_corrections()
                 obj.calculate_eventwise_ratios()
 
             if redo:
