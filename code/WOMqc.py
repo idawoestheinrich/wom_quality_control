@@ -57,7 +57,7 @@ Attributes:
     acquisition timing parameters
 """
 class WOMqc:
-    def __init__(self, device_ip, WOMname, ni, nj, rep, pulsewidth_ch1, pulsewidth_ch2, voltage_range_PMT,  voltage_range_SiPM , rec_time_min, rec_time_max, int_window_min_PMT, int_window_max_PMT, int_window_min_SiPM, int_window_max_SiPM, frame_length_max, heatup_roomtemp = False, heatupmin = False,  plot_waveform=False, plot_heatmap = False, PMsoff= False, dry_run=False, date= None):
+    def __init__(self, device_ip, WOMname, ni, nj, rep, pulsewidth_ch1, pulsewidth_ch2, voltage_range_PMT,  voltage_range_SiPM , rec_time_min, rec_time_max, int_window_min_PMT, int_window_max_PMT, int_window_min_SiPM, int_window_max_SiPM, frame_length_max, LEDamplitude = 1.9, heatup_roomtemp = False, heatupmin = False,  plot_waveform=False, plot_heatmap = False, PMsoff= False, dry_run=False, date= None):
         self.device_ip = device_ip  #IP adress of the Moku device
         self.WOMname = WOMname #characteristic WOM name
         self.ni = ni #number of positions in i direction
@@ -77,7 +77,7 @@ class WOMqc:
         self.int_window_max_SiPM = int_window_max_SiPM
         
         self.frame_length_max = frame_length_max #number of bins in the frame 
-
+        self.LEDamplitude = LEDamplitude
         self.heatup_roomtemp = heatup_roomtemp
         self.heatupmin = heatupmin
         self.plot_waveform = plot_waveform #if true, plot example waveforms during the scan
@@ -496,7 +496,7 @@ class WOMqc:
             temp_in, temp_out = temp[0], temp[1]
             self.device.generate_waveform(
                 channel=1, type="Pulse", 
-                amplitude=1.9, 
+                amplitude=self.LEDamplitude, 
                 frequency=1e6, 
                 offset=0.95, 
                 edge_time=2e-9, 
@@ -504,7 +504,7 @@ class WOMqc:
                 phase=0) 
             self.device.generate_waveform(
                 channel=2, type="Pulse", 
-                amplitude=1.9, 
+                amplitude=self.LEDamplitude, 
                 frequency=1e6, 
                 offset=0.95, 
                 edge_time=2e-9, 
@@ -521,7 +521,7 @@ class WOMqc:
             
             self.device.generate_waveform(
                     channel=1, type="Pulse", 
-                    amplitude=1.9, 
+                    amplitude=self.LEDamplitude, 
                     frequency=1e3, 
                     offset=0.95, 
                     edge_time=2e-9, 
@@ -529,7 +529,7 @@ class WOMqc:
                     phase=0) 
             self.device.generate_waveform(
                     channel=2, type="Pulse", 
-                    amplitude=1.9, 
+                    amplitude=self.LEDamplitude, 
                     frequency=1e3, 
                     offset=0.95, 
                     edge_time=2e-9, 
@@ -554,15 +554,17 @@ class WOMqc:
             self.device.generate_waveform(channel=2, type="Off")#turn output (LED) off   
             return    
 
-    def measurement_without_WOM(self):
-        self.waveforms = []
-        self.integrated_data = [] 
+    def measurement_without_WOM(self, i_j_config):
+        if self.waveforms is None:
+            self.waveforms = []
+        if self.integrated_data is None:
+            self.integrated_data = []
         if self.plot_waveform:
            self.init_plotting()
-
+       
         try:
             self.logger.info(f"Measuring reference without WOM")
-            waveforms, row = self.measure_position(999, 999)
+            waveforms, row = self.measure_position(i_j_config, i_j_config)
 
             self.logger.info("Measurement finished") 
             self.waveforms.append(waveforms)
@@ -641,7 +643,7 @@ class WOMqc:
                 # Generate pulse on Channel ch -> LED emits a pulse of light 
             self.device.generate_waveform(
                     channel=ch, type="Pulse", 
-                    amplitude=1.9, 
+                    amplitude= self.LEDamplitude, 
                     frequency=1e3, 
                     offset=0.95, 
                     edge_time=2e-9, 
@@ -715,6 +717,7 @@ class WOMqc:
                         stop += 1
                         if stop >= 10:
                             self.logger.warning("No pulses in SiPMs detected after 10 attempts")
+                            int_data[i,count] = area 
                             break  
                 data[i,count] = datatemp[channel]
         
@@ -888,8 +891,10 @@ class WOMqc:
             waveforms (pd.DataFrame)
     """
     def run_darkcount_scan(self, darkcount, external_trigger):
-        self.waveforms = []
-        self.integrated_data = []
+        if self.waveforms == None:
+            self.waveforms = []
+        if self.integrated_data == None:
+            self.integrated_data = []
         
         if self.plot_waveform:
            self.init_plotting()
@@ -940,7 +945,7 @@ class WOMqc:
             
                     self.device.set_output_termination(channel=ch, termination="50Ohm")
                     # Generate pulse on Channel ch\
-                    self.device.generate_waveform(channel=ch, type="Pulse", amplitude=1.9, frequency=1e3, offset=0.95, edge_time=2e-9, pulse_width=pulsewidth,  phase=0)
+                    self.device.generate_waveform(channel=ch, type="Pulse", amplitude=self.LEDamplitude, frequency=1e3, offset=0.95, edge_time=2e-9, pulse_width=pulsewidth,  phase=0)
                     # Trigger on input Channel ch, rising edge, 1V 
                     self.device.set_trigger(type="Edge", level=1, source=output, edge="Rising")  
      
@@ -989,13 +994,21 @@ class WOMqc:
               
                         else:                                            #collecting the waveforms measured by the moku  
                             start, end, area = self.riemann_sum_peak(datatemp[channel], self.int_window_min_SiPM, self.int_window_max_SiPM) 
-                            if np.abs(area) > 5e-10: #make sure that a waveform was integrated
-                                    int_data[ch_idx,count] = np.abs(area)
+                            if self.PMsoff:
+                                threshold = 0
+                            else:
+                                if channel == "ch1":
+                                    threshold = 8e-11
+                                else:  
+                                    threshold = 1e-10  
+                            if np.abs(area) >= threshold: #make sure that a waveform was integrated
+                                int_data[ch_idx,count] = np.abs(area)
                             else:
                                     self.logger.info("No pulse, Area = ", area)
                                     stop += 1
                                     if stop >= 10:
                                         self.logger.warning("No pulses detected after 10 attempts")
+                                        int_data[ch_idx,count] = np.abs(area)
                                         break     
                         data[ch_idx ,count] = datatemp[channel]
     
@@ -1864,7 +1877,11 @@ class WOMqc:
             name_suffix = "_wo_baseline_subtraction"
         # Extract values for heatmap x,y
         if self.integrated_data["j"][0] == 999:
-            x, y = integrated_data["j"][1:], -integrated_data["i"][1:]
+            if self.integrated_data["j"][0] == 999 and self.integrated_data["j"][-1] == 1000:
+                x, y = integrated_data["j"][1:-1], -integrated_data["i"][1:-1]
+            else:    
+                x, y = integrated_data["j"][1:], -integrated_data["i"][1:]
+                
         else:
             x, y = integrated_data["j"], -integrated_data["i"]    
         nx = len(np.unique(x))
@@ -1938,8 +1955,11 @@ class WOMqc:
         
         for idx, ch in enumerate(channels):    
             # Extract values for heatmap z = integrated data[ch1]
-            if self.integrated_data["j"][0] == 999:
-                pivot = integrated_data.iloc[1:].pivot(index="i", columns="j", values=ch)
+            if self.integrated_data["j"][0] >= 999:
+                if self.integrated_data["j"][-1] == 9999:
+                    pivot = integrated_data.iloc[1:-1].pivot(index="i", columns="j", values=ch)  
+                else:
+                    pivot = integrated_data.iloc[1:].pivot(index="i", columns="j", values=ch)      
             else:
                 pivot = integrated_data.pivot(index="i", columns="j", values=ch)    
             # remove rows? 
@@ -2436,14 +2456,21 @@ class WOMqc:
         filename = self.foldername / f"{self.filename}_{name}.bin"
         if name == "baseline_integrated_data_eventwise":    
             if self.integrated_data["j"][0] == 999:
-                N, rep, frame_length = self.nj*self.ni*i+1, self.rep, 1
+                if self.integrated_data["j"][-1] == 9999:
+                    N, rep, frame_length = self.nj*self.ni*i+2, self.rep, 1
+                else:
+                    N, rep, frame_length = self.nj*self.ni*i+1, self.rep, 1    
             else:
                 N, rep, frame_length = self.nj*self.ni*i, self.rep, 1    
         else: 
-            if self.integrated_data["j"][0] == 999:  
-                N, rep, frame_length = self.nj*self.ni*i+1, self.rep, self.frame_length_max
+            if self.integrated_data["j"][0] == 999:
+                if self.integrated_data["j"][-1] == 9999:
+                    N, rep, frame_length = self.nj*self.ni*i+2, self.rep, self.frame_length_max
+                else:
+                    N, rep, frame_length = self.nj*self.ni*i+1, self.rep, self.frame_length_max    
             else:
-                N, rep, frame_length = self.nj*self.ni*i, self.rep, self.frame_length_max    
+                N, rep, frame_length = self.nj*self.ni*i, self.rep, self.frame_length_max      
+
         shape = (N, rep, frame_length)
         with open(filename, "rb") as f:
             j_arr = np.fromfile(f, dtype=np.int32, count=N)
@@ -2581,7 +2608,7 @@ class WOMqc:
     Returns:
         None
     """
-    def run_longterm(self, darkcount = True):
+    def run_longterm(self, darkcount = True, external_trigger = False):
         self.cleanup() 
         try:
             self.save_metadata()
@@ -2597,7 +2624,6 @@ class WOMqc:
                 self.frame_length_max = 1024    
             self.configure_scope()
             self.logger.info(f"Configured Hardware")
-            self.logger.info(f"Pulse LEDs for 20min")
             if self.heatup_roomtemp:
                 self.heatup()    
             self.run_darkcount_scan(darkcount, external_trigger)
@@ -2647,16 +2673,18 @@ class WOMqc:
             self.move_home()
             self.logger.info(f"Move Home")
             if self.heatup_roomtemp:
-                self.heatup()    
-            self.measurement_without_WOM()
+                self.heatup(deltaT_in = 0, deltaT_out = 0)    
+            #self.measurement_without_WOM(999)
             response = self.step_down()
             self.logger.info(response)
             self.logger.info(f"Move to WOM Top")
             time.sleep(1)
             self.run_scan()
+            self.move_home()
+            #self.measurement_without_WOM(9999)
             self.savecsv()
             self.savebin()
-            self.motor_off() 
+            self.motor_off()  
             if self.plot_heatmap:
                 self.heatmap_WOM(ch1="PMT_ratio_in", ch2="PMT_ratio_in_std", baseline_subtract= False)
                 self.heatmap_WOM(ch1="SiPM_ratio_in", ch2="SiPM_ratio_in_std", baseline_subtract= False)
@@ -2669,8 +2697,5 @@ class WOMqc:
             self.cleanup() 
             
         finally:
-            self.motor_on() 
-            self.logger.info("Measurement completed successfully.")
-            self.move_home()
-            self.motor_off()   
+            self.logger.info("Measurement completed successfully.") 
             self.cleanup()
