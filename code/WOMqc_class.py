@@ -57,7 +57,7 @@ Attributes:
     acquisition timing parameters
 """
 class WOMqc:
-    def __init__(self, device_ip, WOMname, ni, nj, rep, pulsewidth_ch1, pulsewidth_ch2, voltage_range_PMT,  voltage_range_SiPM , rec_time_min, rec_time_max, int_window_min_PMT, int_window_max_PMT, int_window_min_SiPM, int_window_max_SiPM, frame_length_max, sipm_voltage = 40.7, heatup_roomtemp = False, heatupmin = False,  plot_waveform=False, plot_heatmap = False, PMsoff= False, dry_run=False, date= None):
+    def __init__(self, device_ip, WOMname, ni, nj, rep, pulsewidth_ch1, pulsewidth_ch2, voltage_range_PMT,  voltage_range_SiPM , rec_time_min, rec_time_max, int_window_min_PMT, int_window_max_PMT, int_window_min_SiPM, int_window_max_SiPM, frame_length_max, LEDamplitude = 1.9, sipm_voltage = 40.7, heatup_roomtemp = False, heatupmin = False,  plot_waveform=False, plot_heatmap = False, PMsoff= False, dry_run=False, date= None):
         self.device_ip = device_ip  #IP adress of the Moku device
         self.WOMname = WOMname #characteristic WOM name
         self.ni = ni #number of positions in i direction
@@ -78,6 +78,7 @@ class WOMqc:
         self.frame_length_max = frame_length_max #number of bins in the frame 
 
         self.sipm_voltage = sipm_voltage
+        self.LEDamplitude = LEDamplitude
         self.heatup_roomtemp = heatup_roomtemp
         self.heatupmin = heatupmin
         self.plot_waveform = plot_waveform #if true, plot example waveforms during the scan
@@ -1400,10 +1401,12 @@ class WOMqc:
                         integral.append(sign * area)
                     else:
                         print(row, wf, "area = 0") 
-
-                integrals.append(integral[integral != 0].mean())
-                std_devs.append(integral[integral != 0].std(ddof=1))
-
+                if len(integral) > 1:
+                    integrals.append(integral[integral != 0].mean())
+                    std_devs.append(integral[integral != 0].std(ddof=1))
+                else:
+                    integrals.append(integral[0])
+                    std_devs.append(integral[0])
                 PM_int.append(np.array(integral))
 
                 corrected_rows.append(corrected_row)
@@ -2417,8 +2420,105 @@ class WOMqc:
         return corrected, baseline_value, min_index
         # Returns the corrected waveform, baseline value, and baseline index.
 
+    @staticmethod
+    def gain(T, Vset, dVset, dT):
+        """
+        Calculate the gain of the SiPM based on the applied voltage and temperature.
+        Slope:     m = (7.838615914826629 ± 0.001483241521232523) e5 1/V
+        Intercept: b = (9.809975406709395 ± 0.004662604806026203) e5
+
+        #Gain(Overvoltage) = (7.83861591 ± 0.00148324)*1e5/V * Overvoltage + (9.80997541 ± 0.00466260)*1e5 -  at 25 degrees C - 0.12 V geringere overvoltage - 12% weniger Gain pro 4 Grad Temperaturerhöhung
+        #Breakdownvoltage(T) = (39.16+-0.01)V + (33.66e-3+-0.30e-3) V/K * T
+        #If the Voltage is set to Vset than the 
+        # Overvoltage is Vset-Breakdownvoltage(T) 
+        # = (Vset+-0.1)V - (39.16+-0.01)V - (33.66e-3+-0.30e-3) V/K * T 
+
+        # Gain over Temperature: 
+        # Gain(T) = (7.83861591 ± 0.00148324)*1e5/V * ((Vset+-0.1)V - (39.16+-0.01)V - (33.66e-3+-0.30e-3) V/K * T) + (9.80997541 ± 0.00466260)*1e5 
+
+        # Gain(T) = A * (Vset - B - C * T) + D
+        # A = 7.83861591e5 #
+        # dA = 0.00148324e5
+        # B = 39.16
+        # dB = 0.01
+        # C = 33.66e-3
+        # dC = 0.30e-3
+        # D = 9.80997541e5
+        # dD = 0.00466260e5
+        # dT = 0.1
+        # dVset = 0.1
+        # dGain(T) = sqrt((dA * (Vset + B + C*T))^2 + (A * dVset)^2 + (dB*A)^2 + (dC * T*A)^2 + (dT*C*A)+ (dD)^2) 
+        # SiPM output should proportional to Gain(T) and therefore the SiPM output should decrease with increasing temperature.
+
+        Parameters
+        ----------
+        T : float/array of floats
+            Temperature of the PCB in degrees Celsius.
+
+        Returns
+        -------
+        Gain : float
+            Calculated gain.
+        dGain: float    
+            Calculated uncertainty of the gain.
+        """
+        Gain_per_volt = 7.83861591e5 #Gain change per Volt [V^-1] Fit parameter determined from Gain_overvoltage.csv
+        dGain_per_volt = 0.00148324e5 
+        Breakdown_voltage = 39.16 #Breakdown voltage [V] constant Fit parameter determined from breackdownvoltage_temperature.csv
+        dBreakdown_voltage = 0.01
+        Breakdown_per_K = 33.66e-3 #Breakdown voltage change per Kelvin [V/K] Fit parameter determined from breackdownvoltage_temperature.csv
+        dBreakdown_per_K = 0.30e-3
+        Gain_const = 9.80997541e5 #Gain constant [V] Fit parameter determined from Gain_overvoltage.csv
+        dGain_const = 0.00466260e5
+
+        Gain = Gain_per_volt * (Vset - Breakdown_voltage - Breakdown_per_K * T) + Gain_const
+        dGain = np.sqrt((dGain_per_volt * (Vset - Breakdown_voltage - Breakdown_per_K * T))**2 + (Gain_per_volt * dVset)**2 + (dBreakdown_voltage * Gain_per_volt)**2 + (dBreakdown_per_K * T* Gain_per_volt)**2 + (dT * Breakdown_per_K * Gain_per_volt)**2 + (dGain_const)**2)
+        return Gain, dGain
+
+    def apply_sipm_corrections(self, Vset = 40.7, dVset = 0.1, dT = 0.1):
+        '''
+        - calculate gain
+        - first correct all SiPM values with the gain 
+        - Normalize SiPM values to the 999 measurement if it exists
+        '''
+        #name == "integrated_data":   
+        #    integrated_data = self.integrated_data
+        #elif name == "baseline_integrated_data":    
+        #    integrated_data = self.baseline_integrated_data
+
+        self.baseline_integrated_data["gain_out"], self.baseline_integrated_data["dgain_out"] = self.gain(self.baseline_integrated_data["temp_out"], Vset = Vset, dVset = dVset, dT = dT)
+        self.baseline_integrated_data["gain_in"], self.baseline_integrated_data["dgain_in"] = self.gain(self.baseline_integrated_data["temp_in"], Vset = Vset, dVset = dVset, dT = dT)
+
+        PM = ["SiPMout_in", "SiPMin_in", "SiPMout_out", "SiPMin_out"]
+        Gain = ["gain_out", "gain_in", "gain_out", "gain_in"]
+        for pm, g in zip(PM, Gain):  
+            gain_matrix = np.stack(self.baseline_integrated_data[g].values)[:, None , None]
+            #print(np.shape(gain_matrix), gain_matrix)
+            dgain_matrix = np.stack(self.baseline_integrated_data[f"d{g}"].values)[:, None , None]
+            ratio = self.baseline_integrated_data_eventwise[pm] / gain_matrix
+            #for i in range(3):
+                #print("temp_out", self.baseline_integrated_data["temp_out"][i], pm, "self.baseline_integrated_data_eventwise", self.baseline_integrated_data_eventwise[pm][i], "gain_matrix", gain_matrix[i], "ratio", ratio[i])
+            ratio_err = np.abs(ratio) * np.sqrt(
+                    (dgain_matrix/ gain_matrix)**2
+                )
+
+            self.baseline_integrated_data_eventwise[f"{pm}_gain"] =  ratio
+            self.baseline_integrated_data_eventwise[f"{pm}_gain_err"] = ratio_err
 
 
+        if self.integrated_data["j"][0] == 99999999:
+            for pm in PM:
+                ref = self.baseline_integrated_data_eventwise[f"{pm}_gain"][0][self.baseline_integrated_data_eventwise[pm][0]!= 0].mean()
+                if ref != 0:
+                    ratio = self.baseline_integrated_data_eventwise[f"{pm}_gain"][1:]/ref
+                #ratio_err = np.abs(ratio) * np.sqrt(1/30*
+                #                (self.baseline_integrated_data_eventwise[f"{pm}_std"][1:]/self.baseline_integrated_data_eventwise[pm][1:])**2 +
+                #                (self.baseline_integrated_data_eventwise[f"{pm}_std"][0]/self.baseline_integrated_data_eventwise[pm][0])**2
+                #            )
+                    self.baseline_integrated_data_eventwise[f"{pm}_gain"][1:] = ratio
+                else:
+                    print(pm, "ref = 0", ref)
+                #self.baseline_integrated_data_eventwise[f"{pm}_err"] = ratio_err
 
 
     '''
@@ -2484,16 +2584,20 @@ class WOMqc:
     """
     def readbin(self, i = 1, name="waveforms"):
         filename = self.foldername / f"{self.filename}_{name}.bin"
+        if self.nj == 0:
+            N = self.ni*i  
+        elif self.integrated_data["j"][0] == 999:
+            N =  self.nj*self.ni*i+1
+        else:
+            N = self.nj*self.ni*i  
+
         if name == "baseline_integrated_data_eventwise":    
-            if self.integrated_data["j"][0] == 999:
-                N, rep, frame_length = self.nj*self.ni*i+1, self.rep, 1
-            else:
-                N, rep, frame_length = self.nj*self.ni*i, self.rep, 1    
+            frame_length = 1
         else: 
-            if self.integrated_data["j"][0] == 999:  
-                N, rep, frame_length = self.nj*self.ni*i+1, self.rep, self.frame_length_max
-            else:
-                N, rep, frame_length = self.nj*self.ni*i, self.rep, self.frame_length_max    
+            frame_length = self.frame_length_max
+            
+
+        rep = self.rep        
         shape = (N, rep, frame_length)
         with open(filename, "rb") as f:
             j_arr = np.fromfile(f, dtype=np.int32, count=N)
@@ -2574,7 +2678,7 @@ class WOMqc:
                 - baseline-integrated data
     """
     @classmethod
-    def load(cls, filename, redo=False, window=(20, 0, 100), sigma=0, smooth_method=2, bin_file = True):
+    def load(cls, filename, redo=False, window=(20, 0, 100), sigma=0, smooth_method=2, bin_file = True, Vset = 40.7, dVset = 0.1, dT = 0.1):
         """
         Load a WOMqc object from metadata + stored data.
         """
@@ -2597,7 +2701,9 @@ class WOMqc:
                 print("Baseline data not found. Generating...")
 
                 obj.create_baseline_data(window=window, sigma=sigma, smooth_method=smooth_method)
-                #obj.apply_sipm_corrections()
+                obj.calculate_eventwise_ratios()
+
+                obj.apply_sipm_corrections(Vset = Vset, dVset=dVset, dT = dT)
                 obj.calculate_eventwise_ratios()
 
             if redo:
