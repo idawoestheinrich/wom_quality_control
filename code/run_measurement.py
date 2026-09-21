@@ -24,28 +24,29 @@ scan = WOMqc(
     int_window_min_SiPM = 50e-9, # 0.4e-6#relative to maximum      
     int_window_max_SiPM = 200e-9, #0.55e-6 # relative to maximum  
     frame_length_max = 512,#256,
-    heatup_roomtemp = 26.4,#if no heatup == False else number of minutes
+    heatup_roomtemp = False,#if no heatup == False else number of minutes
     plot_waveform = True,
     plot_heatmap = True,
-    dry_run = True,
-    PMsoff= False # Photomultiplier off? True -> no filter on the saved waveforms - False-> abs(area) > 1e-10
+    dry_run = False,
+    PMsoff= True # Photomultiplier off? True -> no filter on the saved waveforms - False-> abs(area) > 1e-10
     )
-#df = scan.run()
+df = scan.run()
 #df = scan.run_long
 #WOM_uncoated_no_inner_collimator = WOMqc.load("20260831_uncoated_WOM_2mmFreiburgXT_wo_inner_collimator_outer_transmission_SiPM_covered")
 #no_WOM_no_inner_collimator = WOMqc.load("20260831_wo_WOM_wo_inner_collimator_outer_transmission_SiPM_covered")
 #WOM_uncoated_no_outer_collimator = WOMqc.load("20260831_uncoated_WOM_2mmFreiburgXT_wo_outer_collimator_inner_transmission_SiPM_covered")
 #no_WOM_no_outer_collimator = WOMqc.load("20260831_wo_WOM_wo_outer_collimator_inner_transmission_SiPM_covered")
 
-longterm_wo_WOM = WOMqc.load("20260820_test_longterm_wo_WOM_251.7_48.6mm_from_WOM")#
-print("longterm_wo_WOM loaded")
-WOM16_inner_trans_covered = WOMqc.load("20260902_testbeam_WOM16_2mmFreiburgXT_inner_transmission_covered")
-print("WOM16_inner_trans_covered loaded")
-WOM16_outer_trans_covered = WOMqc.load("20260902_testbeam_WOM16_2mmFreiburgXT_outer_transmission_covered")
-print("WOM16_outer_trans_covered loaded")
-uncoated_inner_trans_covered = WOMqc.load("20260902_uncoated_WOM_2mmFreiburgXT_inner_transmission_covered")
-print("uncoated_inner_trans_covered loaded")
-uncoated_outer_trans_covered = WOMqc.load("20260902_uncoated_WOM_2mmFreiburgXT_outer_transmission_covered")
-print("uncoated_outer_trans_covered loaded")
+
+#longterm_wo_WOM = WOMqc.load("20260820_test_longterm_wo_WOM_251.7_48.6mm_from_WOM")#
+#print("longterm_wo_WOM loaded")
+#WOM16_inner_trans_covered = WOMqc.load("20260902_testbeam_WOM16_2mmFreiburgXT_inner_transmission_covered")
+#print("WOM16_inner_trans_covered loaded")
+#WOM16_outer_trans_covered = WOMqc.load("20260902_testbeam_WOM16_2mmFreiburgXT_outer_transmission_covered")
+#print("WOM16_outer_trans_covered loaded")
+#uncoated_inner_trans_covered = WOMqc.load("20260902_uncoated_WOM_2mmFreiburgXT_inner_transmission_covered")
+#print("uncoated_inner_trans_covered loaded")
+#uncoated_outer_trans_covered = WOMqc.load("20260902_uncoated_WOM_2mmFreiburgXT_outer_transmission_covered")
+#print("uncoated_outer_trans_covered loaded")
 
 

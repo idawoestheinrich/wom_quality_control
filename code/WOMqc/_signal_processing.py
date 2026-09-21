@@ -44,7 +44,7 @@ Returns:
         end_idx   : int
         area      : float
 """
-def riemann_sum_peak_old(self, data, int_window_min, int_window_max):
+def riemann_sum_peak(self, data, int_window_min, int_window_max):
     """
     Integrate a waveform around its maximum (peak-centered).
     """
@@ -63,7 +63,7 @@ def riemann_sum_peak_old(self, data, int_window_min, int_window_max):
     area = np.sum(data[start_idx:end_idx]) * dx
     return start_idx, end_idx, area    
 
-def riemann_sum_peak(
+def riemann_sum_peak_vectorized(
     self,
     data,
     int_window_min,

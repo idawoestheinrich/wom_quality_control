@@ -120,7 +120,7 @@ def measurement_without_WOM(self):
         self.waveforms.append(waveforms)
         self.integrated_data.append(row)
     except Exception as e:
-        self.logger.error(f"Error at position j={j}, i={i}: {e}")
+        self.logger.error(f"Error at position j={self.j}, i={self.i}: {e}")
         self.waveforms = pd.DataFrame(self.waveforms)
         self.integrated_data = pd.DataFrame(self.integrated_data)
         return self.integrated_data, self.waveforms   # or break if you want to stop cleanly                
@@ -256,7 +256,7 @@ def getdata(self, ch): #channel number ch, number of waveforms taken per positio
     if self.dry_run:
         self.logger.info(f"[DRY-RUN] Turning off output channel {ch}")
     else:  
-        self.device.generate_waveform(channel=ch, type="Off")#turn output (LED) off       
+        self.device.generate_waveform(channel=ch, type="Off")#turn output (LED) off        
     PMT_data, SiPMin, SiPMout = data[0], data[1], data[2]
     PMT_int, SiPMin_int, SiPMout_int = int_data[0], int_data[1], int_data[2]  
         #int_data = pd.DataFrame(int_data)
@@ -636,43 +636,39 @@ Returns:
     None
 """
 def run(self):
-    self.cleanup() 
-    try:
-        self.save_metadata()
-        self.connect_hardware()
-        self.logger.info(f"Connected Hardware")
-        self.configure_scope()
-        self.logger.info(f"Configured Hardware") 
-        self.motor_on() 
-        self.move_home()
-        self.logger.info(f"Move Home")
-        if self.heatup_roomtemp:
-            self.heatup(deltaT_in = 5, deltaT_out = 5)    
-        self.measurement_without_WOM()
-        response = self.step_down()
-        self.logger.info(response)
-        self.logger.info(f"Move to WOM Top")
-        time.sleep(1)
-        self.run_scan()
-        self.savecsv()
-        self.savebin()
-        self.motor_off() 
-        if self.plot_heatmap:
-            self.heatmap_WOM(ch1="PMT_ratio_in", ch2="PMT_ratio_in_std", baseline_subtract= False)
-            self.heatmap_WOM(ch1="SiPM_ratio_in", ch2="SiPM_ratio_in_std", baseline_subtract= False)
-            self.heatmap_WOM(ch1="SiPM_ref_in", ch2="SiPM_ref_in_std", baseline_subtract= False)
-    except Exception as e:
-        self.logger.exception("Measurement failed")
-        self.motor_on() 
-        self.move_home()
-        self.motor_off()    
-        self.cleanup()             
-    finally:
-        self.motor_on() 
-        self.logger.info("Measurement completed successfully.")
-        self.move_home()
-        self.motor_off()   
-        self.cleanup()
+        self.cleanup() 
+        try:
+            self.save_metadata()
+            self.connect_hardware()
+            self.logger.info(f"Connected Hardware")
+            self.configure_scope()
+            self.logger.info(f"Configured Hardware") 
+            self.motor_on() 
+            self.move_home()
+            self.logger.info(f"Move Home")
+            if self.heatup_roomtemp:
+                self.heatup(deltaT_in = 0, deltaT_out = 0)    
+            #self.measurement_without_WOM(999)
+            response = self.step_down()
+            self.logger.info(response)
+            self.logger.info(f"Move to WOM Top")
+            time.sleep(1)
+            self.run_scan()
+            self.move_home()
+            #self.measurement_without_WOM(9999)
+            self.savecsv()
+            self.savebin()
+            self.motor_off()  
+            if self.plot_heatmap:
+                self.heatmap_WOM(ch1="PMT_ratio_in", ch2="PMT_ratio_in_std", baseline_subtract= False)
+                self.heatmap_WOM(ch1="SiPM_ratio_in", ch2="SiPM_ratio_in_std", baseline_subtract= False)
+                self.heatmap_WOM(ch1="SiPM_ref_in", ch2="SiPM_ref_in_std", baseline_subtract= False)
+        except Exception as e:
+            self.logger.error("Measurement failed:", e)
+            self.motor_on() 
+            self.move_home()
+            self.motor_off()    
+            self.cleanup() 
 
 
 """

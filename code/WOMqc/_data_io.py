@@ -66,7 +66,7 @@ def save_metadata(self):
 @classmethod
 def read_metadata(cls, folder):
         metadata = {}
-        metadata_file =  Path("/Users/ida/Desktop/Research/ship/woms/quality_control_setup/wom_quality_control/data/")/ Path(folder) / "metadata.txt"
+        metadata_file =  Path("/../data/")/ Path(folder) / "metadata.txt"
         with open(metadata_file) as f:
             for line in f:
                 line = line.strip()

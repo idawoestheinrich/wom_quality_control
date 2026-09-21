@@ -116,7 +116,7 @@ class WOMqc:
     @property    
     def foldername(self):
         #return Path.cwd().parent / "data" / f"{date}_{self.WOMname}"
-        return Path("/Users/ida/Desktop/Research/ship/woms/quality_control_setup/wom_quality_control/data") / self.filename
+        return Path("/../data") / self.filename
 
     
     # Delegate hardware methods
