@@ -1,21 +1,10 @@
 # Importing Libraries
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-
-import numpy as np
-import pandas as pd
-import serial 
 import time 
-from datetime import datetime, timedelta
 from pathlib import Path
 import logging
-
-
-from scipy.special import erfc
-from scipy.ndimage import gaussian_filter1d
 #from moku.instruments import Oscilloscope
 #to convert data from arduino to array
-import ast
+
 
 """
 WOMqc acquisition and analysis class.
@@ -64,7 +53,7 @@ class WOMqc:
             int_window_max_SiPM, frame_length_max, LEDamplitude = 1.9, 
             sipm_voltage = 40.7, heatup_roomtemp = False, heatupmin = False,  
             plot_waveform=False, plot_heatmap = False, PMsoff= False, 
-            dry_run=False, date= None):
+            dry_run=False, date= None, load_existing=False):
     
         self.device_ip = device_ip  #IP adress of the Moku device
         self.WOMname = WOMname #characteristic WOM name
@@ -96,9 +85,12 @@ class WOMqc:
         self.PMsoff = PMsoff
 
         self.date = date
+        if not load_existing:
+            self.foldername.mkdir(parents=True, exist_ok=True)
+            self.logger = self._setup_logger()
+        else:
+            self.logger = logging.getLogger(self.__class__.__name__)
 
-        self.logger = self._setup_logger()
-        
         self.i = 0
         self.j = 0
 
@@ -112,8 +104,7 @@ class WOMqc:
         self.baseline_integrated_data = None
         self.baseline_integrated_data_eventwise = None
 
-        # Create data directory
-        self.foldername.mkdir(parents=True, exist_ok=True)
+        
 
     @property    
     def filename(self):
@@ -125,7 +116,9 @@ class WOMqc:
     @property    
     def foldername(self):
         #return Path.cwd().parent / "data" / f"{date}_{self.WOMname}"
-        return Path("../data") / self.filename
+        return Path("/Users/ida/Desktop/Research/ship/woms/quality_control_setup/wom_quality_control/data") / self.filename
+
+    
     # Delegate hardware methods
     from ._hardware import connect_hardware, configure_scope, cleanup
     from ._hardware import write_read, motor_on,  motor_off, move_home, step_down, move_WOM_top, rotate_step
@@ -139,7 +132,7 @@ class WOMqc:
     from ._signal_processing import create_baseline_data, grouped_mean_std, calculate_eventwise_ratios, apply_sipm_corrections
   
     # Data IO Delegation Wrappers - DataManager
-    from ._data_io import _setup_logger, save_metadata, read_metadata, savecsv, savebin, readbin, load
+    from ._data_io import _setup_logger, save_metadata, read_metadata, savecsv, readcsv, savebin, readbin, load
   
     #Vizualization Delegation Wrappers - Plotter
     from ._visualization import init_plotting, update_example_waveform, plot_temperature_over_time, plot_integral_over_time, heatmap_WOM, light_yield_1dim, charge_spectrum, plot_waveforms_position

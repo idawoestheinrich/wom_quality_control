@@ -46,7 +46,7 @@ def heatup(self, deltaT_in = 7.25, deltaT_out = 8):
         temp_in, temp_out = temp[0], temp[1]
         self.device.generate_waveform( 
             channel=1, type="Pulse", 
-            amplitude=1.9, 
+            amplitude= self.LEDamplitude, 
             frequency=1e6, 
             offset=0.95, 
             edge_time=2e-9, 
@@ -54,7 +54,7 @@ def heatup(self, deltaT_in = 7.25, deltaT_out = 8):
             phase=0) #inner LED
         self.device.generate_waveform(
             channel=2, type="Pulse", 
-            amplitude=1.9, 
+            amplitude= self.LEDamplitude, 
             frequency=1e6, 
             offset=0.95, 
             edge_time=2e-9, 
@@ -68,7 +68,7 @@ def heatup(self, deltaT_in = 7.25, deltaT_out = 8):
             time.sleep(60) 
         self.device.generate_waveform( # swich to lower frequency to avoid overheating the inner LED
                 channel=1, type="Pulse", 
-                amplitude=1.9, 
+                amplitude= self.LEDamplitude, 
                 frequency=1e3, 
                 offset=0.95, 
                 edge_time=2e-9, 
@@ -82,7 +82,7 @@ def heatup(self, deltaT_in = 7.25, deltaT_out = 8):
             time.sleep(60)
         self.device.generate_waveform( # swich to lower frequency to avoid overheating the inner LED
                 channel=2, type="Pulse", 
-                amplitude=1.9, 
+                amplitude= self.LEDamplitude, 
                 frequency=1e3, 
                 offset=0.95, 
                 edge_time=2e-9, 
@@ -180,7 +180,7 @@ def getdata(self, ch): #channel number ch, number of waveforms taken per positio
             # Generate pulse on Channel ch -> LED emits a pulse of light 
         self.device.generate_waveform(
                 channel=ch, type="Pulse", 
-                amplitude=1.9, 
+                amplitude= self.LEDamplitude, 
                 frequency=1e3, 
                 offset=0.95, 
                 edge_time=2e-9, 
@@ -393,8 +393,10 @@ Returns:
         waveforms (pd.DataFrame)
 """
 def run_darkcount_scan(self, darkcount, external_trigger):
-    self.waveforms = []
-    self.integrated_data = []        
+    if self.waveforms == None:
+        self.waveforms = []
+    if self.integrated_data == None:
+        self.integrated_data = []
     if self.plot_waveform:
         self.init_plotting()
     dx = (self.rec_time_max - self.rec_time_min) / self.frame_length_max
@@ -437,7 +439,7 @@ def run_darkcount_scan(self, darkcount, external_trigger):
                 self.logger.info(f"Measuring stability over time, LED {tag}")            
                 self.device.set_output_termination(channel=ch, termination="50Ohm")
                 # Generate pulse on Channel ch\
-                self.device.generate_waveform(channel=ch, type="Pulse", amplitude=1.9, frequency=1e3, offset=0.95, edge_time=2e-9, pulse_width=pulsewidth,  phase=0)
+                self.device.generate_waveform(channel=ch, type="Pulse", amplitude= self.LEDamplitude, frequency=1e3, offset=0.95, edge_time=2e-9, pulse_width=pulsewidth,  phase=0)
                 # Trigger on input Channel ch, rising edge, 1V 
                 self.device.set_trigger(type="Edge", level=1, source=output, edge="Rising")       
             elif darkcount == False and external_trigger == True: 
@@ -448,7 +450,7 @@ def run_darkcount_scan(self, darkcount, external_trigger):
                     self.logger.info(f"Measuring stability over time, LED {tag}")
                     self.device.set_output_termination(channel=ch, termination="50Ohm")
                     # Generate pulse on Channel ch\
-                    self.device.generate_waveform(channel=ch, type="Pulse", amplitude=1.9, frequency=1e3, offset=0.95, edge_time=2e-9, pulse_width=pulsewidth,  phase=0)
+                    self.device.generate_waveform(channel=ch, type="Pulse", amplitude= self.LEDamplitude, frequency=1e3, offset=0.95, edge_time=2e-9, pulse_width=pulsewidth,  phase=0)
                     # Trigger on input Channel ch, rising edge, 1V         
                     self.device.set_trigger(type="Edge", level=1, source=output, edge="Rising")                          
             stop = 0                
@@ -480,77 +482,99 @@ def run_darkcount_scan(self, darkcount, external_trigger):
                         int_data[ch_idx,count] = np.abs(area)              
                     else:                                            #collecting the waveforms measured by the moku  
                         start, end, area = self.riemann_sum_peak(datatemp[channel], self.int_window_min_SiPM, self.int_window_max_SiPM) 
-                        if np.abs(area) > 5e-10: #make sure that a waveform was integrated
-                                int_data[ch_idx,count] = np.abs(area)
+                        if self.PMsoff:
+                            threshold = 0
                         else:
-                                self.logger.info("No pulse, Area = ", area)
-                                stop += 1
-                                if stop >= 10:
-                                    self.logger.warning("No pulses detected after 10 attempts")
-                                    break     
-                    data[ch_idx ,count] = datatemp[channel]    
-            waveforms[f"PMT_{tag}"] = data[0]
-            waveforms[f"SiPMin_{tag}"] = data[1]              
-            waveforms[f"SiPMout_{tag}"] = data[2]              
-            row[f"PMT_{tag}"] = int_data[0][0]           
-            row[f"PMT_{tag}_std"] = 0           
-            row[f"SiPMin_{tag}"] = int_data[1][0]         
-            row[f"SiPMin_{tag}_std"] = 0         
-            row[f"SiPMout_{tag}"] = int_data[2][0]          
-            row[f"SiPMout_{tag}_std"] = 0  
-                # other = "out" if tag == "in" else "in"   
-                # waveforms[f"PMT_{other}"] = np.zeros((3, self.rep, self.frame_length_max))[0]
-                # waveforms[f"SiPMin_{other}"] = np.zeros((3, self.rep, self.frame_length_max))[1]              
-                # waveforms[f"SiPMout_{other}"] = np.zeros((3, self.rep, self.frame_length_max))[2]              
-                # row[f"PMT_{other}"] = np.zeros((3, self.rep))[0][0]           
-                # row[f"PMT_std_{other}"] = 0           
-                # row[f"SiPMin_{other}"] = np.zeros((3, self.rep))[1][0]         
-                # row[f"SiPMin_std_{other}"] = 0         
-                # row[f"SiPMout_{other}"] = np.zeros((3, self.rep))[2][0]          
-                # row[f"SiPMout_std_{other}"] = 0  
-            if self.plot_waveform:
-                self.update_example_waveform([np.array(waveforms[f"PMT_{tag}"]).mean(axis=0), np.array(waveforms[f"SiPMin_{tag}"]).mean(axis=0), np.array(waveforms[f"SiPMout_{tag}"]).mean(axis=0)], 0, i, [f"PMT_{tag}", f"SiPMin_{tag}", f"SiPMout_{tag}"])
-                time.sleep(0.1)
-        temp = ast.literal_eval(response)
-        temp_in, temp_out = temp[0], temp[1]
-                #self.logger.info(f"Temperature in={temp_in}, out={temp_out}")
-        row["temp_in"] = temp_in
-        row["temp_out"] = temp_out
-            #time.sleep(0.9)
-        self.waveforms.append(waveforms)
-        self.integrated_data.append(row)   
-    if self.dry_run:
-        self.logger.info(f"[DRY-RUN] Turning off output channel {ch}")
-    else:  
-        self.device.generate_waveform(channel=3, type="Off")#turn                
-    if self.plot_waveform:
-        plt.show()
-        plt.ioff()
-    self.waveforms = pd.DataFrame(self.waveforms)
-    self.integrated_data = pd.DataFrame(self.integrated_data)
-    return self.integrated_data, self.waveforms    
+                            if channel == "ch1":
+                                threshold = 8e-11
+                            else:  
+                                threshold = 1e-10  
+                        if np.abs(area) >= threshold: #make sure that a waveform was integrated
+                                                        int_data[ch_idx,count] = np.abs(area)
+                        else:
+                                    self.logger.info("No pulse, Area = ", area)
+                                    stop += 1
+                                    if stop >= 10:
+                                        self.logger.warning("No pulses detected after 10 attempts")
+                                        int_data[ch_idx,count] = np.abs(area)
+                                        break     
+                        data[ch_idx ,count] = datatemp[channel]
+    
+                waveforms[f"PMT_{tag}"] = data[0]
+                waveforms[f"SiPMin_{tag}"] = data[1]              
+                waveforms[f"SiPMout_{tag}"] = data[2]              
+                row[f"PMT_{tag}"] = int_data[0][0]           
+                row[f"PMT_{tag}_std"] = 0           
+                row[f"SiPMin_{tag}"] = int_data[1][0]         
+                row[f"SiPMin_{tag}_std"] = 0         
+                row[f"SiPMout_{tag}"] = int_data[2][0]          
+                row[f"SiPMout_{tag}_std"] = 0  
+
+                   # other = "out" if tag == "in" else "in"   
+
+                   # waveforms[f"PMT_{other}"] = np.zeros((3, self.rep, self.frame_length_max))[0]
+                   # waveforms[f"SiPMin_{other}"] = np.zeros((3, self.rep, self.frame_length_max))[1]              
+                   # waveforms[f"SiPMout_{other}"] = np.zeros((3, self.rep, self.frame_length_max))[2]              
+                   # row[f"PMT_{other}"] = np.zeros((3, self.rep))[0][0]           
+                   # row[f"PMT_std_{other}"] = 0           
+                   # row[f"SiPMin_{other}"] = np.zeros((3, self.rep))[1][0]         
+                   # row[f"SiPMin_std_{other}"] = 0         
+                   # row[f"SiPMout_{other}"] = np.zeros((3, self.rep))[2][0]          
+                   # row[f"SiPMout_std_{other}"] = 0  
+                if self.plot_waveform:
+                    self.update_example_waveform([np.array(waveforms[f"PMT_{tag}"]).mean(axis=0), np.array(waveforms[f"SiPMin_{tag}"]).mean(axis=0), np.array(waveforms[f"SiPMout_{tag}"]).mean(axis=0)], 0, i, [f"PMT_{tag}", f"SiPMin_{tag}", f"SiPMout_{tag}"])
+                    time.sleep(0.1)
+
+            temp = ast.literal_eval(response)
+            temp_in, temp_out = temp[0], temp[1]
+                    #self.logger.info(f"Temperature in={temp_in}, out={temp_out}")
+
+            row["temp_in"] = temp_in
+            row["temp_out"] = temp_out
+                #time.sleep(0.9)
+            self.waveforms.append(waveforms)
+            self.integrated_data.append(row)   
+        if self.dry_run:
+            self.logger.info(f"[DRY-RUN] Turning off output channel {ch}")
+        else:  
+           self.device.generate_waveform(channel=3, type="Off")#turn    
+            
+        if self.plot_waveform:
+            plt.show()
+            plt.ioff()
+
+        self.waveforms = pd.DataFrame(self.waveforms)
+        self.integrated_data = pd.DataFrame(self.integrated_data)
+
+        return self.integrated_data, self.waveforms
+    
 """
-Execute full WOM scan over a 2D grid of positions on the WOM.
-Performs automated data acquisition across all (j, i) scan positions:
-    - Moves system to each position
-    - Measures waveforms and integrated signals
-    - Stores results incrementally
-    - Handles hardware stepping in both axes
-Optional:
-    - Real-time waveform plotting during acquisition
-Error handling:
-    - Logs failures at specific scan positions
-    - Converts collected partial data to DataFrame
-    - Stops scan safely and returns partial results
-Scan flow:
-    for each j row:
-        for each i column:
-            measure → store → step
-        reset/rotate position
-Returns:
-    tuple:
-        integrated_data (pd.DataFrame)
-        waveforms (pd.DataFrame)
+    Execute full WOM scan over a 2D grid of positions on the WOM.
+
+    Performs automated data acquisition across all (j, i) scan positions:
+        - Moves system to each position
+        - Measures waveforms and integrated signals
+        - Stores results incrementally
+        - Handles hardware stepping in both axes
+
+    Optional:
+        - Real-time waveform plotting during acquisition
+
+    Error handling:
+        - Logs failures at specific scan positions
+        - Converts collected partial data to DataFrame
+        - Stops scan safely and returns partial results
+
+    Scan flow:
+        for each j row:
+            for each i column:
+                measure → store → step
+            reset/rotate position
+
+    Returns:
+        tuple:
+            integrated_data (pd.DataFrame)
+            waveforms (pd.DataFrame)
 """
 def run_scan(self):
     if self.waveforms == None:
@@ -580,14 +604,20 @@ def run_scan(self):
                 self.integrated_data = pd.DataFrame(self.integrated_data)
                 return self.integrated_data, self.waveforms   # or break if you want to stop cleanly
         response = self.move_WOM_top()
-        self.logger.info(response)            
+        self.logger.info(response)    
+
         self.j = j
+
     if self.plot_waveform:
         plt.show()
         plt.ioff()
+
     self.waveforms = pd.DataFrame(self.waveforms)
     self.integrated_data = pd.DataFrame(self.integrated_data)
+
     return self.integrated_data, self.waveforms
+
+    
 """
 Run full spatial WOM scan measurement.
 Executes a 2D scan over (i, j) positions:
@@ -617,7 +647,7 @@ def run(self):
         self.move_home()
         self.logger.info(f"Move Home")
         if self.heatup_roomtemp:
-            self.heatup()    
+            self.heatup(deltaT_in = 5, deltaT_out = 5)    
         self.measurement_without_WOM()
         response = self.step_down()
         self.logger.info(response)
@@ -632,7 +662,7 @@ def run(self):
             self.heatmap_WOM(ch1="SiPM_ratio_in", ch2="SiPM_ratio_in_std", baseline_subtract= False)
             self.heatmap_WOM(ch1="SiPM_ref_in", ch2="SiPM_ref_in_std", baseline_subtract= False)
     except Exception as e:
-        self.logger.error("Measurement failed:", e)
+        self.logger.exception("Measurement failed")
         self.motor_on() 
         self.move_home()
         self.motor_off()    
@@ -765,7 +795,7 @@ def run_darkcount_scan(self, darkcount, external_trigger):
                 self.logger.info(f"Measuring stability over time, LED {tag}")            
                 self.device.set_output_termination(channel=ch, termination="50Ohm")
                 # Generate pulse on Channel ch\
-                self.device.generate_waveform(channel=ch, type="Pulse", amplitude=1.9, frequency=1e3, offset=0.95, edge_time=2e-9, pulse_width=pulsewidth,  phase=0)
+                self.device.generate_waveform(channel=ch, type="Pulse", amplitude= self.LEDamplitude, frequency=1e3, offset=0.95, edge_time=2e-9, pulse_width=pulsewidth,  phase=0)
                 # Trigger on input Channel ch, rising edge, 1V 
                 self.device.set_trigger(type="Edge", level=1, source=output, edge="Rising")       
             elif darkcount == False and external_trigger == True: 
@@ -776,7 +806,7 @@ def run_darkcount_scan(self, darkcount, external_trigger):
                     self.logger.info(f"Measuring stability over time, LED {tag}")
                     self.device.set_output_termination(channel=ch, termination="50Ohm")
                     # Generate pulse on Channel ch\
-                    self.device.generate_waveform(channel=ch, type="Pulse", amplitude=1.9, frequency=1e3, offset=0.95, edge_time=2e-9, pulse_width=pulsewidth,  phase=0)
+                    self.device.generate_waveform(channel=ch, type="Pulse", amplitude= self.LEDamplitude, frequency=1e3, offset=0.95, edge_time=2e-9, pulse_width=pulsewidth,  phase=0)
                     # Trigger on input Channel ch, rising edge, 1V         
                     self.device.set_trigger(type="Edge", level=1, source=output, edge="Rising")                          
             stop = 0                

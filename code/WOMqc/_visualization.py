@@ -169,13 +169,20 @@ def heatmap_WOM(self, ch1= "PMT_ratio_in", ch2 = None, vmin=None, vmax=None,
         else:
             ValueError("self.baseline_integrated_data does not exist. Please run load()")    
     else: 
-        integrated_data = self.integrated_data.copy()    
-        name_suffix = "_wo_baseline_subtraction"
-    # Extract values for heatmap x,y
+            integrated_data = self.integrated_data.copy()    
+            name_suffix = "_wo_baseline_subtraction"
+        # Extract values for heatmap x,y
     if self.integrated_data["j"][0] == 999:
-        x, y = integrated_data["j"][1:], -integrated_data["i"][1:]
+            if (
+                self.integrated_data["j"].iloc[0] == 999
+                and self.integrated_data["j"].iloc[-1] == 1000
+            ):
+                x, y = integrated_data["j"][1:-1], -integrated_data["i"][1:-1]
+            else:    
+                x, y = integrated_data["j"][1:], -integrated_data["i"][1:]
+                
     else:
-        x, y = integrated_data["j"], -integrated_data["i"]    
+            x, y = integrated_data["j"], -integrated_data["i"]     
     nx = len(np.unique(x))
     ny = len(np.unique(y))
     X = x.values.reshape(ny, nx)

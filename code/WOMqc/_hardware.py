@@ -85,22 +85,23 @@ def configure_scope(self):
             self.rec_time_max,
             max_length = self.frame_length_max
         )
-"""
-Configure oscilloscope input channels and acquisition settings.
-Sets up Moku oscilloscope frontend for all detector channels:
-    - Impedance and coupling
-    - Voltage range per channel
-    - Input source mapping
-    - Timebase (recording window and resolution)
-Channels:
-    1 → PMT
-    2 → SiPM in
-    3 → SiPM out
-In dry-run mode:
-    Only logs configuration steps.
-Returns:
-    None
-"""        
+    """
+    Comunication with Arduino
+    command =
+    1. Measure Temperature (inner & outer PCB)
+    2. Rotate stepper motor 18 degrees forward
+    3. Rotate stepper motor 18 degrees reverse
+    4. Trigger Output 1
+    5. Trigger Output 2
+    6. Rotate stepper motor 180 degrees forward
+    7. Rotate stepper motor 180 degress reverse
+    8. Find magnet (1 full rotation max)")
+    9. Rotate stepper motor 90 degrees forward
+    10. Rotate stepper motor 90 degrees reverse
+    0. Exit
+
+    returns response from arduino
+    """       
 def write_read(self, command): 
     if self.dry_run:
         self.logger.debug(f"[DRY-RUN] Communicating with Arduino: sent {x}, received test data")
@@ -119,16 +120,8 @@ def write_read(self, command):
                     return "[No response]"
         except Exception as e:
             return f"[Error: {e}]"
-        #if x == "1":
-        #    self.arduino.write(bytes(x, 'utf-8')) 
-        #    time.sleep(1.5) 
-        #    data = self.arduino.readline().decode().strip()  
-        #    time.sleep(0.05)
-        #else: 
-        #    self.arduino.write(bytes(x, 'utf-8')) 
-        #    time.sleep(0.05) 
-        #    data = 0
-        #return data                        
+
+                    
 '''
 Motion control
 '''

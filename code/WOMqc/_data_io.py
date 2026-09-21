@@ -19,17 +19,20 @@ metadata saving/loading, and binary/CSV persistence.
 '''
 
 def _setup_logger(self):
-    logger = logging.getLogger(f"{self.__class__.__name__}_{self.filename}")
+    # 2️⃣ configure logger **here, inside the class**
+    logger = logging.getLogger(self.__class__.__name__)
     logger.setLevel(logging.INFO)
+        # Remove any default handlers to avoid duplicates
     if logger.hasHandlers():
-        logger.handlers.clear()
-    formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
+            logger.handlers.clear()
+    # Console handler
     ch = logging.StreamHandler()
     ch.setLevel(logging.INFO)
-    ch.setFormatter(formatter)
+    ch.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
+    # File handler — now self.foldername exists
     fh = logging.FileHandler(self.foldername / "logfile.log")
     fh.setLevel(logging.INFO)
-    fh.setFormatter(formatter)
+    fh.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
     logger.addHandler(ch)
     logger.addHandler(fh)
     return logger
@@ -63,7 +66,7 @@ def save_metadata(self):
 @classmethod
 def read_metadata(cls, folder):
         metadata = {}
-        metadata_file =  Path("../data")/ Path(folder) / "metadata.txt"
+        metadata_file =  Path("/Users/ida/Desktop/Research/ship/woms/quality_control_setup/wom_quality_control/data/")/ Path(folder) / "metadata.txt"
         with open(metadata_file) as f:
             for line in f:
                 line = line.strip()
@@ -108,6 +111,9 @@ def savecsv(self, name = "integrated_data"):
         self.baseline_integrated_data.to_csv(filename, index=False)
     else:
         raise ValueError("Invalid integrated data attribute")
+    
+
+
 def readcsv(self, name="integrated_data"):
     if name == "integrated_data":
         filename = self.foldername / f"{self.filename}_integrated.csv"
@@ -200,50 +206,60 @@ Stores:
     self.baseline_wf
 """
 def readbin(self, i = 1, name="waveforms"):
-    filename = self.foldername / f"{self.filename}_{name}.bin"
-    if self.nj == 0:
-        N = self.ni*i  
-    elif self.integrated_data["j"][0] == 999:
-        N =  self.nj*self.ni*i+1
-    else:
-        N = self.nj*self.ni*i  
-    if name == "baseline_integrated_data_eventwise":    
-        frame_length = 1
-    else: 
-        frame_length = self.frame_length_max            
-    rep = self.rep        
-    shape = (N, rep, frame_length)
-    with open(filename, "rb") as f:
-        j_arr = np.fromfile(f, dtype=np.int32, count=N)
-        i_arr = np.fromfile(f, dtype=np.int32, count=N)
-        PMT_LEDin_all     = np.fromfile(f, dtype=np.float32, count=np.prod(shape)).reshape(shape)
-        SiPMin_LEDin_all  = np.fromfile(f, dtype=np.float32, count=np.prod(shape)).reshape(shape)
-        SiPMout_LEDin_all = np.fromfile(f, dtype=np.float32, count=np.prod(shape)).reshape(shape)
-        PMT_LEDout_all    = np.fromfile(f, dtype=np.float32, count=np.prod(shape)).reshape(shape)
-        SiPMin_LEDout_all = np.fromfile(f, dtype=np.float32, count=np.prod(shape)).reshape(shape)
-        SiPMout_LEDout_all= np.fromfile(f, dtype=np.float32, count=np.prod(shape)).reshape(shape)
-    assert PMT_LEDin_all.shape == (N, rep, frame_length)
-    assert j_arr.dtype == np.int32
-    assert PMT_LEDin_all.dtype == np.float32
-    data = {
-        "j": j_arr,
-        "i": i_arr,
-        "PMT_in": PMT_LEDin_all,
-        "SiPMin_in": SiPMin_LEDin_all,
-        "SiPMout_in": SiPMout_LEDin_all,
-        "PMT_out": PMT_LEDout_all,
-        "SiPMin_out": SiPMin_LEDout_all,
-        "SiPMout_out": SiPMout_LEDout_all,
-    }
-    if name == "waveforms":
-        self.waveforms = data
-    elif name == "baseline_waveforms":
-        self.baseline_wf = data
-    elif name == "baseline_integrated_data_eventwise":  
-        self.baseline_integrated_data_eventwise = data     
-    else:
-        raise ValueError("Invalid waveforms attribute")
-    return data
+        filename = self.foldername / f"{self.filename}_{name}.bin"
+        if self.nj == 0:
+            N = self.ni*i  
+            if self.integrated_data["j"][0] == 999:
+                N =  self.ni*i+1
+            if self.integrated_data["j"][0] == 999 and self.integrated_data["j"].iloc[-1] == 9999:
+                N =  self.ni*i+2
+        else:
+            N = self.nj*self.ni*i  
+            if self.integrated_data["j"][0] == 999:
+                N =  self.nj*self.ni*i+1
+            if self.integrated_data["j"][0] == 999 and self.integrated_data["j"].iloc[-1] == 9999:
+                N =  self.nj*self.ni*i+2    
+
+        if name == "baseline_integrated_data_eventwise":    
+            frame_length = 1    
+        else: 
+            frame_length = self.frame_length_max  
+
+        rep = self.rep        
+
+        shape = (N, rep, frame_length)
+        with open(filename, "rb") as f:
+            j_arr = np.fromfile(f, dtype=np.int32, count=N)
+            i_arr = np.fromfile(f, dtype=np.int32, count=N)
+            PMT_LEDin_all     = np.fromfile(f, dtype=np.float32, count=np.prod(shape)).reshape(shape)
+            SiPMin_LEDin_all  = np.fromfile(f, dtype=np.float32, count=np.prod(shape)).reshape(shape)
+            SiPMout_LEDin_all = np.fromfile(f, dtype=np.float32, count=np.prod(shape)).reshape(shape)
+            PMT_LEDout_all    = np.fromfile(f, dtype=np.float32, count=np.prod(shape)).reshape(shape)
+            SiPMin_LEDout_all = np.fromfile(f, dtype=np.float32, count=np.prod(shape)).reshape(shape)
+            SiPMout_LEDout_all= np.fromfile(f, dtype=np.float32, count=np.prod(shape)).reshape(shape)
+        assert PMT_LEDin_all.shape == (N, rep, frame_length)
+        assert j_arr.dtype == np.int32
+        assert PMT_LEDin_all.dtype == np.float32
+
+        data = {
+            "j": j_arr,
+            "i": i_arr,
+            "PMT_in": PMT_LEDin_all,
+            "SiPMin_in": SiPMin_LEDin_all,
+            "SiPMout_in": SiPMout_LEDin_all,
+            "PMT_out": PMT_LEDout_all,
+            "SiPMin_out": SiPMin_LEDout_all,
+            "SiPMout_out": SiPMout_LEDout_all,
+        }
+        if name == "waveforms":
+            self.waveforms = data
+        elif name == "baseline_waveforms":
+            self.baseline_wf = data
+        elif name == "baseline_integrated_data_eventwise":  
+            self.baseline_integrated_data_eventwise = data     
+        else:
+            raise ValueError("Invalid waveforms attribute")
+        return data
 """
 Load a WOMqc object including original and baseline corrected waveforms and corresponding integrated data.
 Steps:
@@ -278,15 +294,18 @@ def load(cls, filename, redo=False, window=(20, 0, 100), sigma=0, smooth_method=
     Load a WOMqc object from metadata + stored data.
     """
     md = cls.read_metadata(filename)
-    obj = cls(**md)
+    obj = cls(**md, load_existing=True)
     obj.readcsv()
+    
     if bin_file:
         obj.readbin()
         # Try loading baseline data
         try:
             obj.readbin(name="baseline_waveforms")
             obj.readbin(name="baseline_integrated_data_eventwise")
-            obj.readcsv(name="baseline_integrated_data")        
+            obj.readcsv(name="baseline_integrated_data")
+            obj.apply_sipm_corrections(Vset = Vset, dVset=dVset, dT = dT)
+            obj.calculate_eventwise_ratios()        
         # If files do not exist -> generate them
         except Exception:            
             print("Baseline data not found. Generating...")

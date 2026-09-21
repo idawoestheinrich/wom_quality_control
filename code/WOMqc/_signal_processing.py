@@ -4,6 +4,7 @@ import pandas as pd
 
 from scipy.special import erfc
 from scipy.ndimage import gaussian_filter1d
+from scipy.signal import convolve
 #from moku.instruments import Oscilloscope
 
 
@@ -43,7 +44,7 @@ Returns:
         end_idx   : int
         area      : float
 """
-def riemann_sum_peak(self, data, int_window_min, int_window_max):
+def riemann_sum_peak_old(self, data, int_window_min, int_window_max):
     """
     Integrate a waveform around its maximum (peak-centered).
     """
@@ -62,6 +63,61 @@ def riemann_sum_peak(self, data, int_window_min, int_window_max):
     area = np.sum(data[start_idx:end_idx]) * dx
     return start_idx, end_idx, area    
 
+def riemann_sum_peak(
+    self,
+    data,
+    int_window_min,
+    int_window_max
+):
+    dx = (
+        self.rec_time_max - self.rec_time_min
+    ) / self.frame_length_max
+    # Find peak for every waveform
+    peak_idx = np.argmax(
+        np.abs(data),
+        axis=-1
+    )
+    # Peak time
+    peak_time = (
+        self.rec_time_min
+        + peak_idx * dx
+    )
+    # Integration window
+    start_time = peak_time - int_window_min
+    end_time = peak_time + int_window_max
+    start_idx = np.maximum(
+        0,
+        np.round(
+            (start_time - self.rec_time_min) / dx
+        ).astype(int)
+    )
+    end_idx = np.minimum(
+        self.frame_length_max,
+        np.round(
+            (end_time - self.rec_time_min) / dx
+        ).astype(int)
+    )
+    # ----------------------------------------
+    # Integrate each waveform
+    # ----------------------------------------
+    areas = np.zeros(
+        data.shape[:-1],
+        dtype=np.float32
+    )
+    for index in np.ndindex(data.shape[:-1]):
+        areas[index] = (
+            np.sum(
+                data[
+                    index + (
+                        slice(
+                            start_idx[index],
+                            end_idx[index]
+                        ),
+                    )
+                ]
+            ) * dx
+        )
+    return areas
 
 """
 Gaussian model for waveform shape.
@@ -110,8 +166,8 @@ Baseline correction using minimum sum in range for correction.
 
 
 @staticmethod
-def correct_baseline_min(waveform, window, sigma, smooth_method):
-    wf = np.asarray(waveform, dtype=float)
+def correct_baseline_min_old(waveform, window, sigma, smooth_method):
+    wf = np.asarray(waveform, dtype=np.float32)
     n = len(wf)
     # --- Optional smoothing ---
     if sigma > 0:
@@ -136,13 +192,92 @@ def correct_baseline_min(waveform, window, sigma, smooth_method):
     corrected = wf - baseline_value
     return corrected, baseline_value, min_index
 
+@staticmethod
+def correct_baseline_min(waveforms, window,sigma, smooth_method):
+    wf = np.asarray(waveforms, dtype=np.float32)
+    if wf.ndim != 3:
+        raise ValueError(
+            f"Expected (n, m, samples), got {wf.shape}"
+        )
+    n_samples = wf.shape[-1]
+
+    # --------------------------------------------------
+    # Optional smoothing
+    # --------------------------------------------------
+    if sigma > 0:
+        if smooth_method == 0:
+            kernel_size = int(2 * sigma + 1)
+            kernel = (
+                np.ones(kernel_size, dtype=np.float32)
+                / kernel_size
+            )
+            wf = convolve(
+                wf,
+                kernel.reshape(1, 1, -1),
+                mode="same"
+            )
+        elif smooth_method == 2:
+            wf = gaussian_filter1d(
+                wf,
+                sigma=sigma,
+                axis=-1
+            )
+        else:
+            raise ValueError(
+                f"Unknown smooth_method: {smooth_method}"
+            )
+    # --------------------------------------------------
+    # Baseline window
+    # --------------------------------------------------
+    length, start, end = window
+    length = int(length)
+    start = max(0, int(start))
+    end = min(n_samples - length, int(end))
+    if end <= start:
+        raise ValueError(
+            f"Invalid baseline window: {window}"
+        )
+
+    # --------------------------------------------------
+    # Moving average
+    # --------------------------------------------------
+    cumsum = np.cumsum(wf, axis=-1, dtype=np.float32)
+
+    means_full = (
+        cumsum[..., length:]
+        - cumsum[..., :-length]
+    ) / length
+
+    means = means_full[..., start:end]
+    # --------------------------------------------------
+    # Find minimum absolute baseline
+    # --------------------------------------------------
+    min_index_local = np.argmin(
+        np.abs(means),
+        axis=-1
+    )
+    baseline_value = np.take_along_axis(
+        means,
+        min_index_local[..., None],
+        axis=-1
+    )[..., 0]
+
+    min_index = start + min_index_local
+
+    # --------------------------------------------------
+    # Baseline correction
+    # --------------------------------------------------
+    corrected = wf - baseline_value[..., None]
+
+    return corrected, baseline_value, min_index
+
 
 @staticmethod
 def correct_baseline_min_not_vectorized(waveform, window=(20, 10, 90), sigma=0, smooth_method=2):
     """
     Baseline correction using minimum-sum search over a moving window.
     """
-    wf = np.array(waveform, dtype=float)
+    wf = np.array(waveform, dtype=np.float32)
     # Converts the input waveform to a float numpy array.
     n = len(wf)
     # Gets the length of the waveform.
@@ -282,94 +417,115 @@ ValueError
     If event-wise data have not yet been generated by
     `calculate_eventwise_ratios()`.
 """
-def grouped_mean_std(self, value_col, group_col,
-                    step_size=6.55, ny=None):
-    # Check whether event-wise ratio data exist
-    if "PMT_out_ref" in self.baseline_integrated_data_eventwise:
-        # Only allow grouping by detector row or column
-        if group_col not in ["i", "j"]:
-            raise ValueError("group_col must be 'i' or 'j'")
-        # Extract grouping variable (i or j)
-        group_ids = self.baseline_integrated_data_eventwise[group_col]
-        # Extract values to be analyzed
-        values = self.baseline_integrated_data_eventwise[value_col]
-        # Dictionary that will contain all values belonging
-        # to a given i or j position
-        groups = {}
-        # -------------------------------------------------
-        # Collect values for each group
-        # -------------------------------------------------
-        for val, gid in zip(values, group_ids):
-            groups.setdefault(gid, []).append(val)
-        # -------------------------------------------------
-        # Calculate statistics for each group
-        # -------------------------------------------------
-        group_means = []
-        group_stds = []
-        group_sem = []
-        for gid, vals in groups.items():
-            # Flatten nested event/waveform structure
-            vals = np.array(vals).flatten()
-            # Mean value of the group
-            group_means.append(vals[vals != 0].mean())
-            # Standard deviation of the group
-            group_stds.append(vals[vals != 0].std(ddof=1))
-            # Standard error of the mean
-            group_sem.append(
-                vals[vals != 0].std(ddof=1) / np.sqrt(len(vals[vals != 0]))
-            )
-        # Use number of groups if ny was not specified
-        if ny is None:
-            ny = len(groups)
-        # -------------------------------------------------
-        # Construct physical coordinate axis
-        # -------------------------------------------------
-        if group_col == "j":
-            # Angular coordinate
-            y_phys = np.linspace(0, 360, ny)
-        else:
-            # Longitudinal detector coordinate
-            if (
-                "_in" in value_col
-                or "ref_in" in value_col
-                or "Noise_in" in value_col
-                or "norm_in" in value_col
-            ):
-                y_phys = np.linspace(
-                    202,
-                    202 - ny * step_size,
-                    ny
-                )
-            elif (
-                "_out" in value_col
-                or "ref_out" in value_col
-                or "Noise_out" in value_col
-                or "norm_out" in value_col
-            ):
-                y_phys = np.linspace(
-                    195,
-                    195 - ny * step_size,
-                    ny
-                )
-            else:
-                y_phys = np.linspace(
-                    199,
-                    199 - ny * step_size,
-                    ny
-                )
-        return (
-            y_phys,
-            groups,
-            group_means,
-            group_stds,
-            group_sem
-        )
+def grouped_mean_std(
+    self,
+    value_col,
+    group_col,
+    data="eventwise",
+    step_size=6.55,
+    ny=None,
+):
+    """Calculate mean, std and SEM grouped by detector row or column."""
+
+    if group_col not in ["i", "j"]:
+        raise ValueError("group_col must be 'i' or 'j'")
+
+    # Select data source
+    if data == "eventwise":
+        dataframe = self.baseline_integrated_data_eventwise
+    elif data == "integrated":
+        dataframe = self.baseline_integrated_data
     else:
+        raise VaslueError(
+            "data must be either 'eventwise' or 'integrated'"
+        )
+
+    # Check that requested value exists
+    if value_col not in dataframe:
         raise ValueError(
-            "self.baseline_integrated_data_eventwise['PMT_out_ref'] "
-            "does not exist.\n"
-            "Please run calculate_eventwise_ratios() first."
-        )    
+            f"'{value_col}' does not exist in the selected data."
+        )
+
+    # Extract grouping variable
+    group_ids = dataframe[group_col]
+
+    # Extract values
+    values = dataframe[value_col]
+
+    # Collect values for each group
+    groups = {}
+
+    for val, gid in zip(values, group_ids):
+        groups.setdefault(gid, []).append(val)
+
+    # Calculate statistics
+    group_means = []
+    group_stds = []
+    group_sem = []
+
+    for gid, vals in groups.items():
+
+        # Flatten event/waveform structure
+        vals = np.asarray(vals).flatten()
+
+        # Ignore zero values
+        vals = vals[vals != 0]
+
+        group_means.append(vals.mean())
+        group_stds.append(vals.std(ddof=1))
+        group_sem.append(
+            vals.std(ddof=1) / np.sqrt(len(vals))
+        )
+
+    # Number of groups
+    if ny is None:
+        ny = len(groups)
+
+    # Physical coordinate
+    if group_col == "j":
+
+        y_phys = np.linspace(0, 360, ny)
+
+    else:
+
+        if (
+            "_in" in value_col
+            or "ref_in" in value_col
+            or "Noise_in" in value_col
+            or "norm_in" in value_col
+        ):
+            y_phys = np.linspace(
+                202,
+                202 - ny * step_size,
+                ny
+            )
+
+        elif (
+            "_out" in value_col
+            or "ref_out" in value_col
+            or "Noise_out" in value_col
+            or "norm_out" in value_col
+        ):
+            y_phys = np.linspace(
+                195,
+                195 - ny * step_size,
+                ny
+            )
+
+        else:
+            y_phys = np.linspace(
+                199,
+                199 - ny * step_size,
+                ny
+            )
+
+    return (
+        y_phys,
+        groups,
+        group_means,
+        group_stds,
+        group_sem,
+    ) 
 
            
 """
@@ -405,7 +561,7 @@ REF_int : list of np.ndarray
     [2] - "SiPMout_out"
     [3] - "SiPMout_out"        
 """
-def calculate_eventwise_ratios(self):
+def calculate_eventwise_ratios_old(self):
     # ----------------------------------------
     # Mapping of signal channels to their
     # corresponding reference channels
@@ -437,59 +593,80 @@ def calculate_eventwise_ratios(self):
                 self.baseline_integrated_data_eventwise[ref]
             ):
                 # Convert rows to 1D float arrays
-                pm_arr = np.array(pm_row, dtype=float)
-                ref_arr = np.array(ref_row, dtype=float)
+                pm_arr = np.array(pm_row, dtype=np.float32)
+                ref_arr = np.array(ref_row, dtype=np.float32)
                 # Calculate ratio element-wise; place np.nan where ref_arr == 0
                 with np.errstate(divide='ignore', invalid='ignore'):
                     ratios = np.where(ref_arr != 0, pm_arr / ref_arr, np.nan)
+                    
                 # Calculate statistics while ignoring np.nan entries
+                
                 ratios_mean.append(np.nanmean(ratios))
                 ratios_std.append(np.nanstd(ratios))
                 Ratios.append(ratios)
+
             # Store results
             self.baseline_integrated_data[f"{pm}_ref"] = np.array(ratios_mean)
             self.baseline_integrated_data[f"{pm}_ref_std"] = np.array(ratios_std)
             self.baseline_integrated_data_eventwise[f"{pm}_ref"] = np.array(Ratios, dtype=object)
-            self.savecsv(name="baseline_integrated_data")    
-            # Loop over all events
-            #for pm_row, ref_row in zip(
-                #self.baseline_integrated_data_eventwise[pm],
-                #self.baseline_integrated_data_eventwise[ref]
-            #):
-                ## Integrated pulse areas for all waveforms
-                ## belonging to the current event
-                #pm_int = []
-                #ref_int = []#
-                ## Loop over all waveform pairs within the event
-                #count = 0
-                #for area_pm, area_ref in zip(pm_row, ref_row):
-                    ## Store integrated pulse areas
-                    #if area_ref != 0:
-                        #pm_int.append(area_pm)
-                        #ref_int.append(area_ref)
-                    #else:
-                        #print(ref, count, "area_ref = 0:") 
-                        #pm_int.append(None)
-                        #ref_int.append(None)#
-                    #count += 1    #
-                ## Convert to numpy arrays for vectorized operations
-                #pm_int = np.array(pm_int)
-                #ref_int = np.array(ref_int)#
-                ## Calculate waveform-by-waveform ratios
-                #if "PMT" in pm:
-                    #ratios = pm_int / ref_int
-                #else:  
-                    #ratios = pm_int / ref_int  
-                ##else:
-                    ##   print(pm_row, ref_row, "ref_int = 0")
-                ## Calculate event-wise statistics
-                #ratios_mean.append(np.mean(ratios))
-                #ratios_std.append(np.std(ratios))
-                #Ratios.append(ratios)#
-            ## Store results in the integrated-data dataframe/dictionary
-            #self.baseline_integrated_data[f"{pm}_ref"] = np.array(ratios_mean)
-            #self.baseline_integrated_data[f"{pm}_ref_std"] = np.array(ratios_std)
-            #self.baseline_integrated_data_eventwise[f"{pm}_ref"] = np.array(Ratios)
+
+            #self.savecsv(name="baseline_integrated_data")    
+
+def calculate_eventwise_ratios(self):
+
+    if self.baseline_integrated_data_eventwise is None:
+        raise ValueError(
+            "self.baseline_integrated_data_eventwise does not exist.\n"
+            "Please run load() with option redo=True"
+        )
+
+    if self.baseline_integrated_data_eventwise.get("SiPMin_in_gain") is not None:
+        ratio_map = {
+            "PMT_in": "SiPMin_in_gain",
+            "SiPMout_in_gain": "SiPMin_in_gain",
+            "PMT_out": "SiPMout_out_gain",
+            "SiPMin_out_gain": "SiPMout_out_gain"
+        }
+    else:
+        ratio_map = {
+            "PMT_in": "SiPMin_in",
+            "SiPMout_in": "SiPMin_in",
+            "PMT_out": "SiPMout_out",
+            "SiPMin_out": "SiPMout_out"
+        }
+
+    for pm, ref in ratio_map.items():
+        print("Calculating event-wise ratios for:", pm, "with reference:", ref)
+        pm_arr = np.asarray(
+            self.baseline_integrated_data_eventwise[pm],
+            dtype=np.float32
+        )
+
+        ref_arr = np.asarray(
+            self.baseline_integrated_data_eventwise[ref],
+            dtype=np.float32
+        )
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ratios = np.divide(
+                pm_arr,
+                ref_arr,
+                out=np.full_like(pm_arr, np.nan),
+                where=ref_arr != 0
+            )
+
+        # Mean and std over the waveforms of each event
+        ratios_mean = np.nanmean(ratios, axis=1)
+        ratios_std = np.nanstd(ratios, axis=1)
+
+        # Store eventwise ratios
+        self.baseline_integrated_data[f"{pm}_ref"] = ratios_mean
+        self.baseline_integrated_data[f"{pm}_ref_std"] = ratios_std
+
+        self.baseline_integrated_data_eventwise[
+            f"{pm}_ref"
+        ] = ratios
+        print("Saved event-wise ratios for:", pm, "in shape", ratios.shape)
 
 
 def apply_sipm_corrections(self, Vset = 40.7, dVset = 0.1, dT = 0.1):
@@ -502,20 +679,48 @@ def apply_sipm_corrections(self, Vset = 40.7, dVset = 0.1, dT = 0.1):
     #    integrated_data = self.integrated_data
     #elif name == "baseline_integrated_data":    
     #    integrated_data = self.baseline_integrated_data
+    print("Applying SiPM gain corrections")
     self.baseline_integrated_data["gain_out"], self.baseline_integrated_data["dgain_out"] = self.gain(self.baseline_integrated_data["temp_out"], Vset = Vset, dVset = dVset, dT = dT)
     self.baseline_integrated_data["gain_in"], self.baseline_integrated_data["dgain_in"] = self.gain(self.baseline_integrated_data["temp_in"], Vset = Vset, dVset = dVset, dT = dT)
     PM = ["SiPMout_in", "SiPMin_in", "SiPMout_out", "SiPMin_out"]
     Gain = ["gain_out", "gain_in", "gain_out", "gain_in"]
+
     for pm, g in zip(PM, Gain):  
-        gain_matrix = np.stack(self.baseline_integrated_data[g].values)[:, None , None]
-        #print(np.shape(gain_matrix), gain_matrix)
-        dgain_matrix = np.stack(self.baseline_integrated_data[f"d{g}"].values)[:, None , None]
-        ratio = self.baseline_integrated_data_eventwise[pm] / gain_matrix
-        #for i in range(3):
-            #print("temp_out", self.baseline_integrated_data["temp_out"][i], pm, "self.baseline_integrated_data_eventwise", self.baseline_integrated_data_eventwise[pm][i], "gain_matrix", gain_matrix[i], "ratio", ratio[i])
-        ratio_err = np.abs(ratio) * np.sqrt(
-                (dgain_matrix/ gain_matrix)**2
+        print("Correcting SiPM values for:", pm)
+        gain_matrix = self.baseline_integrated_data[g].to_numpy(
+            dtype=np.float32
+        )
+
+        dgain_matrix = self.baseline_integrated_data[f"d{g}"].to_numpy(
+            dtype=np.float32
+        )
+        eventwise = np.asarray(
+                    self.baseline_integrated_data_eventwise[pm],
+                    dtype=np.float32
+        )
+        # Add singleton dimensions to gain/dgain until they
+        # have the same number of dimensions as eventwise.
+        gain_matrix = gain_matrix.reshape((len(gain_matrix),) + (1,) * (eventwise.ndim - 1))
+        dgain_matrix = dgain_matrix.reshape((len(dgain_matrix),) + (1,) * (eventwise.ndim - 1))
+        #gain_matrix = np.stack(self.baseline_integrated_data[g].values)[:, None , None]
+        #print(np.shape(gain_matrix), np.shape(self.baseline_integrated_data_eventwise[pm]))
+        #dgain_matrix = np.stack(self.baseline_integrated_data[f"d{g}"].values)[:, None , None]
+
+        print("eventwise:", eventwise.shape)
+        print("gain:", gain_matrix.shape)
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ratio = np.divide(
+                eventwise,
+                gain_matrix,
+                out=np.full_like(eventwise, np.nan),
+                where=gain != 0
             )
+
+            ratio_err = np.abs(ratio) * np.abs(dgain_matrix / gain_matrix)
+
+        print("ratio:", ratio.shape)
+        
         self.baseline_integrated_data_eventwise[f"{pm}_gain"] =  ratio
         self.baseline_integrated_data_eventwise[f"{pm}_gain_err"] = ratio_err
     if self.integrated_data["j"][0] == 99999999:
@@ -531,6 +736,8 @@ def apply_sipm_corrections(self, Vset = 40.7, dVset = 0.1, dT = 0.1):
             else:
                 print(pm, "ref = 0", ref)
             #self.baseline_integrated_data_eventwise[f"{pm}_err"] = ratio_err
+
+            
 
             
 """
@@ -565,7 +772,7 @@ The generated data are automatically saved using:
     savecsv(name="baseline_integrated_data")
     savebin(name="baseline_waveforms")
 """
-def create_baseline_data(self, window=(20, 0, 100), sigma=0, smooth_method=2):
+def create_baseline_data_old(self, window=(20, 0, 100), sigma=0, smooth_method=2):
     PM = [
         "PMT_in", "SiPMin_in", "SiPMout_in",
         "PMT_out", "SiPMin_out", "SiPMout_out"
@@ -603,17 +810,20 @@ def create_baseline_data(self, window=(20, 0, 100), sigma=0, smooth_method=2):
             sign = 1
         else:
             raise ValueError(f"Unknown PM type: {pm}")
+        #print("self.waveforms[pm].shape", self.waveforms[pm].shape)
+            
         for row in self.waveforms[pm]:
             corrected_row = []
             integral = []
             for wf in row:
                 # Baseline correction
-                wf_corr = self.correct_baseline_min(
+                wf_corr, baseline, index = self.correct_baseline_min(
                     wf,
                     window=window,
                     sigma=sigma,
                     smooth_method=smooth_method
                 )[0]
+                print(f"Baseline correction for {pm}: baseline={baseline}, index={index}")
                 corrected_row.append(wf_corr)
                 # Integration
                 _, _, area = self.riemann_sum_peak(
@@ -621,28 +831,192 @@ def create_baseline_data(self, window=(20, 0, 100), sigma=0, smooth_method=2):
                     int_window_min,
                     int_window_max
                 )
-                if area != 0:
-                    integral.append(sign * area)
-                else:
-                    print(row, wf, "area = 0") 
-            if len(integral) > 1:
-                integrals.append(integral[integral != 0].mean())
-                std_devs.append(integral[integral != 0].std(ddof=1))
+                integral.append(sign * area) 
+                
+            integral = np.asarray(integral)
+            nonzero = integral[integral != 0]
+            if len(nonzero) > 0:
+                integrals.append(nonzero.mean())
             else:
-                integrals.append(integral[0])
-                std_devs.append(integral[0])
+                integrals.append(np.nan)
+
+            if len(nonzero) > 1:
+                std_devs.append(nonzero.std(ddof=1))
+            else:
+                std_devs.append(np.nan)
+
             PM_int.append(np.array(integral))
             corrected_rows.append(corrected_row)
         self.baseline_wf[pm] = np.array(corrected_rows, dtype=np.float32)
         self.baseline_integrated_data_eventwise[pm] = np.array(PM_int, dtype=np.float32)
         self.baseline_integrated_data[pm] = np.array(integrals)
         self.baseline_integrated_data[pm + "_std"] = np.array(std_devs)
+
+    #print("\nLengths before DataFrame:")
+    #for key, value in self.baseline_integrated_data.items():
+    #    print(key, len(value))
+
     self.baseline_integrated_data = pd.DataFrame(
         self.baseline_integrated_data
     )
     # ----------------------------------------
     # Save
     # ----------------------------------------
-    self.savecsv(name="baseline_integrated_data")
-    self.savebin(name="baseline_waveforms")
-    self.savebin(name="baseline_integrated_data_eventwise")
+    #self.savecsv(name="baseline_integrated_data")
+    #self.savebin(name="baseline_waveforms")
+    #self.savebin(name="baseline_integrated_data_eventwise")
+def create_baseline_data(self, window=(20, 0, 100), sigma=0, smooth_method=2):
+    PM = [
+        "PMT_in", "SiPMin_in", "SiPMout_in", "PMT_out", "SiPMin_out", "SiPMout_out"]
+    self.baseline_wf = {}
+    self.baseline_integrated_data = {}
+    self.baseline_integrated_data_eventwise = {}
+    # ----------------------------------------
+    # Copy metadata
+    # ----------------------------------------
+    for key in ["i", "j", "time", "temp_in", "temp_out"]:
+        self.baseline_integrated_data[key] = (
+            self.integrated_data[key].copy()
+        )
+    self.baseline_wf["i"] = self.waveforms["i"].copy()
+    self.baseline_wf["j"] = self.waveforms["j"].copy()
+
+    self.baseline_integrated_data_eventwise["i"] = (
+        self.waveforms["i"].copy()
+    )
+    self.baseline_integrated_data_eventwise["j"] = (
+        self.waveforms["j"].copy()
+    )
+    # ----------------------------------------
+    # Baseline correction + integration
+    # ----------------------------------------
+    chunk_size = 500  # Number of positions to process in each chunk
+    for pm in PM:
+        if "PMT" in pm:
+                    int_window_min = self.int_window_min_PMT
+                    int_window_max = self.int_window_max_PMT
+                    sign = -1
+        elif "SiPM" in pm:
+                    int_window_min = self.int_window_min_SiPM
+                    int_window_max = self.int_window_max_SiPM
+                    sign = 1
+        else:
+                    raise ValueError(f"Unknown PM type: {pm}")
+        waveforms = np.asarray(self.waveforms[pm], dtype=np.float32)
+
+        if waveforms.ndim == 2:
+            waveforms = waveforms[:, np.newaxis, :]
+
+        n_positions = waveforms.shape[0]
+        n_waveforms = waveforms.shape[1]
+
+        corrected_all = np.empty_like(waveforms)
+        integrals_all = np.empty(
+            (n_positions, n_waveforms),
+            dtype=np.float32
+        )
+
+        for start in range(0, n_positions, chunk_size):
+            stop = min(start + chunk_size, n_positions)
+
+            chunk = waveforms[start:stop]
+
+            corrected, baselines, indices = self.correct_baseline_min(
+                chunk,
+                window=window,
+                sigma=sigma,
+                smooth_method=smooth_method
+            )
+
+            integrals = self.riemann_sum_peak(
+                corrected,
+                int_window_min,
+                int_window_max
+            )
+
+            integrals *= sign
+
+            corrected_all[start:stop] = corrected
+            integrals_all[start:stop] = integrals
+
+            del corrected
+            del baselines
+            del indices
+            del integrals
+
+        # ----------------------------------------
+        # Store eventwise data
+        # ----------------------------------------
+        self.baseline_wf[pm] = corrected_all
+        print(f"Stored baseline-corrected waveforms for {pm}.")
+        self.baseline_integrated_data_eventwise[pm] = integrals_all
+        print(f"Stored event-wise integrated data for {pm}.")
+        # ----------------------------------------
+        # Mean and standard deviation
+        # over the m waveforms
+        # ----------------------------------------
+        # ----------------------------------------
+        # Mean and standard deviation
+        # over the m waveforms
+        # ----------------------------------------
+
+        valid = integrals_all != 0
+
+        counts = valid.sum(axis=1)
+
+        # Replace invalid (zero) values by NaN
+        values = np.where(
+            valid,
+            integrals_all,
+            np.nan
+        )
+
+        # Mean, ignoring zeros
+        means = np.nanmean(values, axis=1)
+
+        # Rows with no valid values should be NaN
+        means[counts == 0] = np.nan
+
+        # Standard deviation
+        stds = np.full(
+            means.shape,
+            np.nan,
+            dtype=np.float32
+        )
+
+        # Only calculate std for rows with at least 2 valid waveforms
+        valid_std = counts > 1
+
+        stds[valid_std] = np.nanstd(
+            values[valid_std],
+            axis=1,
+            ddof=1
+        )
+
+        self.baseline_integrated_data[pm] = means
+        print(f"Stored mean integrated data for {pm}.") 
+        self.baseline_integrated_data[pm + "_std"] = stds
+        print(f"Stored standard deviation of integrated data for {pm}.")
+
+    # ----------------------------------------
+    # Inspect before DataFrame
+    # ----------------------------------------
+    print("\nBefore DataFrame:")
+
+    for key, value in self.baseline_integrated_data.items():
+        print(
+            key,
+            type(value),
+            np.shape(value),
+            getattr(value, "dtype", None),
+            getattr(value, "nbytes", 0) / 1e6,
+            "MB"
+        )
+
+    print("Creating DataFrame...")
+
+    self.baseline_integrated_data = pd.DataFrame(
+        self.baseline_integrated_data
+    )
+
+    print("DataFrame created.")
