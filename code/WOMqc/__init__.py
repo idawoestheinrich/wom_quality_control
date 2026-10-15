@@ -113,10 +113,12 @@ class WOMqc:
         #return Path.cwd().parent / "data" / f"{date}_{self.WOMname}"
         return f"{self.date}_{self.WOMname}"
     
-    @property    
-    def foldername(self):
         #return Path.cwd().parent / "data" / f"{date}_{self.WOMname}"
-        return Path("/../data") / self.filename
+        #return Path("/../data") / self.filename
+    @property
+    def foldername(self):
+        return Path(__file__).resolve().parents[2] / "data" / self.filename
+
 
     
     # Delegate hardware methods
@@ -128,11 +130,11 @@ class WOMqc:
     from ._acquisition import run_darkcount_scan, run_scan, run_longterm, run
   
     #Analysis Delegation Wrappers - Signal Processing
-    from ._signal_processing import riemann_sum_peak, gaussian, EMG, correct_baseline_min, gain
+    from ._signal_processing import riemann_sum_peak, riemann_sum_peak_vectorized, gaussian, EMG, correct_baseline_min, gain
     from ._signal_processing import create_baseline_data, grouped_mean_std, calculate_eventwise_ratios, apply_sipm_corrections
   
     # Data IO Delegation Wrappers - DataManager
-    from ._data_io import _setup_logger, save_metadata, read_metadata, savecsv, readcsv, savebin, readbin, load
+    from ._data_io import _setup_logger, save_metadata, read_metadata, savecsv, readcsv, savebin, readbin, _readbin_old, _readbin_new, _store_readbin_data, load
   
     #Vizualization Delegation Wrappers - Plotter
     from ._visualization import init_plotting, update_example_waveform, plot_temperature_over_time, plot_integral_over_time, heatmap_WOM, light_yield_1dim, charge_spectrum, plot_waveforms_position

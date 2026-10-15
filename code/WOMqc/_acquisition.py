@@ -329,6 +329,9 @@ def measure_position(self, j, i):
     }
     if self.dry_run:
         temp = [20.0, 21.0]
+        row["temp_in"] = temp[0]
+        row["temp_out"] = temp[1]
+
     else:
         response = self.write_read("1")
         self.logger.info(f"temperature {response}")   

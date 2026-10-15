@@ -890,7 +890,9 @@ def create_baseline_data(self, window=(20, 0, 100), sigma=0, smooth_method=2):
     # ----------------------------------------
     # Baseline correction + integration
     # ----------------------------------------
-    chunk_size = 500  # Number of positions to process in each chunk
+
+
+
     for pm in PM:
         if "PMT" in pm:
                     int_window_min = self.int_window_min_PMT
@@ -915,7 +917,10 @@ def create_baseline_data(self, window=(20, 0, 100), sigma=0, smooth_method=2):
             (n_positions, n_waveforms),
             dtype=np.float32
         )
-
+        if n_positions >= 500:
+            chunk_size = 500 # Number of positions to process in each chunk
+        else:
+            chunk_size = n_positions
         for start in range(0, n_positions, chunk_size):
             stop = min(start + chunk_size, n_positions)
 
@@ -928,7 +933,7 @@ def create_baseline_data(self, window=(20, 0, 100), sigma=0, smooth_method=2):
                 smooth_method=smooth_method
             )
 
-            integrals = self.riemann_sum_peak(
+            integrals = self.riemann_sum_peak_vectorized(
                 corrected,
                 int_window_min,
                 int_window_max
