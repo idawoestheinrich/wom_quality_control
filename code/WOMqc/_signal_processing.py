@@ -1018,10 +1018,22 @@ def create_baseline_data(self, window=(20, 0, 100), sigma=0, smooth_method=2):
             "MB"
         )
 
-    print("Creating DataFrame...")
+    #print("Creating DataFrame...")
 
     self.baseline_integrated_data = pd.DataFrame(
         self.baseline_integrated_data
     )
 
-    print("DataFrame created.")
+    #print("DataFrame created.")
+
+
+def write_eventwise_to_integrated_data(self):
+    data = self.baseline_integrated_data_eventwise
+    result = {}
+    for key, value in data.items():
+        if key not in ("j", "i"):
+            result[key] = np.asarray(value).mean(axis=1).squeeze()
+    result = pd.DataFrame(result)
+    self.baseline_integrated_data.update(result)
+    self.baseline_integrated_data = self.baseline_integrated_data.combine_first(result)
+    return result   

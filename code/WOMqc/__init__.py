@@ -131,7 +131,7 @@ class WOMqc:
   
     #Analysis Delegation Wrappers - Signal Processing
     from ._signal_processing import riemann_sum_peak, riemann_sum_peak_vectorized, gaussian, EMG, correct_baseline_min, gain
-    from ._signal_processing import create_baseline_data, grouped_mean_std, calculate_eventwise_ratios, apply_sipm_corrections
+    from ._signal_processing import create_baseline_data, grouped_mean_std, calculate_eventwise_ratios, apply_sipm_corrections, write_eventwise_to_integrated_data
   
     # Data IO Delegation Wrappers - DataManager
     from ._data_io import _setup_logger, save_metadata, read_metadata, savecsv, readcsv, savebin, readbin, _readbin_old, _readbin_new, _store_readbin_data, load
