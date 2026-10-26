@@ -117,7 +117,7 @@ class WOMqc:
         #return Path("/../data") / self.filename
     @property
     def foldername(self):
-        return Path(__file__).resolve().parents[2] / "data" / self.filename
+        return Path(__file__).resolve().parents[3] / "data" / self.filename
 
 
     
