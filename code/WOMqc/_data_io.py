@@ -557,7 +557,8 @@ def load(cls, filename, redo=False, window=(20, 0, 100), sigma=0, smooth_method=
             obj.readbin(name="baseline_integrated_data_eventwise")
             obj.readcsv(name="baseline_integrated_data")
             obj.apply_sipm_corrections(Vset = Vset, dVset=dVset, dT = dT)
-            obj.calculate_eventwise_ratios()        
+            obj.calculate_eventwise_ratios()   
+            obj.write_eventwise_to_integrated_data()     
         # If files do not exist -> generate them
         except Exception:            
             print("Baseline data not found. Generating...")

@@ -403,7 +403,10 @@ def run_darkcount_scan(self, darkcount, external_trigger):
     if self.plot_waveform:
         self.init_plotting()
     dx = (self.rec_time_max - self.rec_time_min) / self.frame_length_max
-    if darkcount:
+    if self.dry_run:
+        LEDs = [(1, "in"), (2, "out")]
+        self.logger.info(f"[DRY-RUN] Running darkcount scan with {self.ni} positions and {self.rep} repetitions per position.")
+    elif self.dry_run == False and darkcount == True:
             LEDs = [(1, "in")]
             self.logger.info(f"Measuring darkcounts, LED in")                
             self.device.set_output_termination(channel=3, termination="50Ohm")
@@ -422,12 +425,20 @@ def run_darkcount_scan(self, darkcount, external_trigger):
         waveforms = {
                 "j": 0,
                 "i": i,#(ch-1)*self.ni+i,  
-            }            
+            }   
+        
+                        #time.sleep(0.9)         
         if self.dry_run:
-                temp = [20.0, 21.0]
+                row["temp_in"] = 20.0
+                row["temp_out"] =  21.0
         else:
                 response = self.write_read("1")
                 self.logger.info(f"temperature {response}")   
+                temp = ast.literal_eval(response)
+                #temp_in, temp_out = temp[0], temp[1]
+                #self.logger.info(f"Temperature in={temp_in}, out={temp_out}"       
+                row["temp_in"] = temp[0]
+                row["temp_out"] = temp[1]
         if i % 10 == 0: 
                 self.logger.info(i)        
         for ch, tag in LEDs:
@@ -438,14 +449,16 @@ def run_darkcount_scan(self, darkcount, external_trigger):
                 pulsewidth = self.pulsewidth_ch2
             else:
                 self.logger.warning("choose channel ", ch)
-            if darkcount == False and external_trigger == False:
+            if self.dry_run:
+                self.logger.info(f"[DRY-RUN] Generating a waveform for Channel {ch}")
+            elif self.dry_run == False and darkcount == False and external_trigger == False:
                 self.logger.info(f"Measuring stability over time, LED {tag}")            
                 self.device.set_output_termination(channel=ch, termination="50Ohm")
                 # Generate pulse on Channel ch\
                 self.device.generate_waveform(channel=ch, type="Pulse", amplitude= self.LEDamplitude, frequency=1e3, offset=0.95, edge_time=2e-9, pulse_width=pulsewidth,  phase=0)
                 # Trigger on input Channel ch, rising edge, 1V 
                 self.device.set_trigger(type="Edge", level=1, source=output, edge="Rising")       
-            elif darkcount == False and external_trigger == True: 
+            elif self.dry_run == False and darkcount == False and external_trigger == True: 
                 if ch == 2: 
                     self.logger.info(f"Measuring external trigger, LED out")   
                     self.device.set_trigger(type="Edge", level=0.7, source="External", edge="Rising")                        
@@ -528,15 +541,9 @@ def run_darkcount_scan(self, darkcount, external_trigger):
                     self.update_example_waveform([np.array(waveforms[f"PMT_{tag}"]).mean(axis=0), np.array(waveforms[f"SiPMin_{tag}"]).mean(axis=0), np.array(waveforms[f"SiPMout_{tag}"]).mean(axis=0)], 0, i, [f"PMT_{tag}", f"SiPMin_{tag}", f"SiPMout_{tag}"])
                     time.sleep(0.1)
 
-            temp = ast.literal_eval(response)
-            temp_in, temp_out = temp[0], temp[1]
-                    #self.logger.info(f"Temperature in={temp_in}, out={temp_out}")
-
-            row["temp_in"] = temp_in
-            row["temp_out"] = temp_out
-                #time.sleep(0.9)
-            self.waveforms.append(waveforms)
-            self.integrated_data.append(row)   
+            
+        self.waveforms.append(waveforms)
+        self.integrated_data.append(row)   
         if self.dry_run:
             self.logger.info(f"[DRY-RUN] Turning off output channel {ch}")
         else:  
@@ -546,10 +553,10 @@ def run_darkcount_scan(self, darkcount, external_trigger):
             plt.show()
             plt.ioff()
 
-        self.waveforms = pd.DataFrame(self.waveforms)
-        self.integrated_data = pd.DataFrame(self.integrated_data)
+    self.waveforms = pd.DataFrame(self.waveforms)
+    self.integrated_data = pd.DataFrame(self.integrated_data)
 
-        return self.integrated_data, self.waveforms
+    return self.integrated_data, self.waveforms
     
 """
     Execute full WOM scan over a 2D grid of positions on the WOM.
@@ -693,7 +700,7 @@ Modes:
 Returns:
     None
 """
-def run_longterm(self, darkcount = True):
+def run_longterm(self, darkcount = True, external_trigger = False):
     self.cleanup() 
     try:
         self.save_metadata()
@@ -749,13 +756,15 @@ Returns:
         integrated_data (pd.DataFrame)
         waveforms (pd.DataFrame)
 """
-def run_darkcount_scan(self, darkcount, external_trigger):
+def run_darkcount_scan_old(self, darkcount, external_trigger):
     self.waveforms = []
     self.integrated_data = []        
     if self.plot_waveform:
         self.init_plotting()
     dx = (self.rec_time_max - self.rec_time_min) / self.frame_length_max
-    if darkcount:
+    if self.dry_run:
+        self.logger.info(f"[DRY-RUN] Running darkcount scan with {self.ni} positions and {self.rep} repetitions per position.")
+    elif self.dry_run == False and darkcount == True:
             LEDs = [(1, "in")]
             self.logger.info(f"Measuring darkcounts, LED in")                
             self.device.set_output_termination(channel=3, termination="50Ohm")
@@ -763,7 +772,7 @@ def run_darkcount_scan(self, darkcount, external_trigger):
             self.device.generate_waveform(channel=3, type="Pulse", amplitude=0.6, frequency=1e3, offset=0.3, edge_time=2e-9, pulse_width=100e-9,  phase=0)
             # Trigger on input Channel ch, rising edge, 1V 
             self.device.set_trigger(type="Edge", level=0.3, source="Output3", edge="Rising")                
-    else:     
+    elif self.dry_run == False and darkcount == False:     
         LEDs = [(1, "in"), (2, "out")]
     for i in range(self.ni):
         row = {
