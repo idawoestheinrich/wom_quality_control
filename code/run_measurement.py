@@ -8,13 +8,13 @@ import matplotlib.pyplot as plt
 
 scan = WOMqc(
     device_ip = "[fe80::7269:79ff:feb0:1098]", # Bitte anpassen! fe80::7269:79ff:feb0:1098%11 fe80::7269:79ff:feb0:109 
-    WOMname = "test",#"WOM_FreiburgXT2mm_6_55mm_new_cover_thin_coating_wo_coupling",#testbeam_WOM_16_6_55mm_vertical_steps_4",
+    WOMname = "testbeam_WOM_16",#test",#"WOM_FreiburgXT2mm_6_55mm_new_cover_thin_coating_wo_coupling",#
     #"WOM_FreiburgXT2mm_6_55mm_old_reflector_thin_coating_4_covered_gab_ring",
-    ni = 20, #vertical step count - in longterm measurments of the number of iterations 
-    nj = 0,#rotation step count 
-    rep = 1,#repititons
-    pulsewidth_ch1 = 75e-9, #77e-9
-    pulsewidth_ch2 = 75e-9,
+    ni = 29, #vertical step count - in longterm measurments of the number of iterations 
+    nj = 20,#rotation step count 
+    rep = 30,#repititons
+    pulsewidth_ch1 = 87e-09, #77e-9
+    pulsewidth_ch2 = 82e-9,
     voltage_range_PMT  = "400mVpp", 
     voltage_range_SiPM = "4Vpp", #"400mVpp" with no or uncoated WOM or "4Vpp" with coated WOM
     rec_time_min = 0.3e-6,
@@ -24,13 +24,15 @@ scan = WOMqc(
     int_window_min_SiPM = 50e-9, # 0.4e-6#relative to maximum      
     int_window_max_SiPM = 200e-9, #0.55e-6 # relative to maximum  
     frame_length_max = 512,#256,
-    heatup_roomtemp = False,#if no heatup == False else number of minutes
-    plot_waveform = True,
-    plot_heatmap = False,
-    dry_run = True,
+    sipm_voltage = 40.7,
+    LEDamplitude = 1.9, 
+    heatup_roomtemp = 22.0,#if no heatup == False else number of minutes
+    plot_waveform = False,
+    plot_heatmap = True,
+    dry_run = False,
     PMsoff= False # Photomultiplier off? True -> no filter on the saved waveforms - False-> abs(area) > 1e-10
     )
-#scan.run()
+scan.run()
 
 #scan.heatmap_WOM(baseline_subtract = False)
 
@@ -57,7 +59,7 @@ scan = WOMqc(
 #WOM16_inner_trans_covered = WOMqc.load("20260902_testbeam_WOM16_2mmFreiburgXT_inner_transmission_covered")
 #print("WOM16_inner_trans_covered loaded")
 
-WOM16_outer_trans_covered = WOMqc.load("20260902_testbeam_WOM16_2mmFreiburgXT_outer_transmission_covered")
+#WOM16_outer_trans_covered = WOMqc.load("20260902_testbeam_WOM16_2mmFreiburgXT_outer_transmission_covered")
 #print("WOM16_outer_trans_covered loaded")
 #uncoated_inner_trans_covered = WOMqc.load("20260902_uncoated_WOM_2mmFreiburgXT_inner_transmission_covered")
 #print("uncoated_inner_trans_covered loaded")
