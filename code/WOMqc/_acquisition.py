@@ -216,7 +216,7 @@ def getdata(self, ch): #channel number ch, number of waveforms taken per positio
                     threshold = 0
                 else:
                     if channel == "ch1":
-                        threshold = 8e-11
+                        threshold = 7e-12
                     else:  
                         threshold = 1e-10  
                 if np.abs(area) >= threshold: #make sure that a waveform was integrated
@@ -229,7 +229,7 @@ def getdata(self, ch): #channel number ch, number of waveforms taken per positio
                         int_data[i,count] = -area 
                         break     
             else:   
-                start, end, area = self.riemann_sum_peak(datatemp[channel], self.int_window_min_SiPM, self.int_window_max_SiPM) 
+                _, _, area = self.riemann_sum_peak(datatemp[channel], self.int_window_min_SiPM, self.int_window_max_SiPM) 
                 #if channel == "ch2":
                 #    area =- (self.int_window_min_SiPM + self.int_window_max_SiPM)*15e-3
                 #if channel == "ch3":
@@ -514,8 +514,7 @@ def run_darkcount_scan(self, darkcount, external_trigger):
                                         self.logger.warning("No pulses detected after 10 attempts")
                                         int_data[ch_idx,count] = np.abs(area)
                                         break     
-                        data[ch_idx ,count] = datatemp[channel]
-    
+                    data[ch_idx ,count] = datatemp[channel]
                 waveforms[f"PMT_{tag}"] = data[0]
                 waveforms[f"SiPMin_{tag}"] = data[1]              
                 waveforms[f"SiPMout_{tag}"] = data[2]              
@@ -544,12 +543,12 @@ def run_darkcount_scan(self, darkcount, external_trigger):
             
         self.waveforms.append(waveforms)
         self.integrated_data.append(row)   
-        if self.dry_run:
+    if self.dry_run:
             self.logger.info(f"[DRY-RUN] Turning off output channel {ch}")
-        else:  
+    else:  
            self.device.generate_waveform(channel=3, type="Off")#turn    
             
-        if self.plot_waveform:
+    if self.plot_waveform:
             plt.show()
             plt.ioff()
 
@@ -657,7 +656,7 @@ def run(self):
             self.move_home()
             self.logger.info(f"Move Home")
             if self.heatup_roomtemp:
-                self.heatup(deltaT_in = 0, deltaT_out = 0)    
+                self.heatup(deltaT_in = 7, deltaT_out = 7)    
             #self.measurement_without_WOM(999)
             response = self.step_down()
             self.logger.info(response)
@@ -716,9 +715,8 @@ def run_longterm(self, darkcount = True, external_trigger = False):
             self.frame_length_max = 1024    
         self.configure_scope()
         self.logger.info(f"Configured Hardware")
-        self.logger.info(f"Pulse LEDs for 20min")
         if self.heatup_roomtemp:
-            self.heatup()    
+            self.heatup(deltaT_in = 7, deltaT_out = 7)    
         self.run_darkcount_scan(darkcount, external_trigger)
         self.savecsv()
         self.savebin()
