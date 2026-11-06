@@ -124,7 +124,7 @@ Creates a time evolution plot of the integrated charge
 for the provided detector channels.
 Takes:
     PM : list[str]
-        List of channel names to plot.
+        List of channel names to plot. - Use self.integrated_data.keys() to see available channels.
 Returns:
     None
 """ 
@@ -519,4 +519,4 @@ def plot_waveforms_position(
     #plt.grid(True)
     plt.xlim(self.rec_time_min*1e9, self.rec_time_max*1e9)
     plt.ylim(-1.1,1.5)
-    plt.show()    
+  

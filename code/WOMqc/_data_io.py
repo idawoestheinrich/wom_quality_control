@@ -237,7 +237,7 @@ def savebin(self, name="waveforms"):
         # Waveforms
         for channel in channels:
             arrays[channel].tofile(f)
-            print(f"Saved {channel} to {filename}")
+            #print(f"Saved {channel} to {filename}")
 
 
 """
@@ -421,14 +421,14 @@ def _readbin_new(self, f, name):
         raise ValueError(
             f"Unsupported WOM binary version: {version}"
         )
-    print("magic:", magic)
-    print("version:", version)
-    print("N:", N)
-    print("rep:", rep)
-    print("frame_length:", frame_length)
-    print("coordinate_dtype_code:", coordinate_dtype_code)
-    print("waveform_dtype_code:", waveform_dtype_code)
-    print("waveform_scale:", waveform_scale)
+    #print("magic:", magic)
+    #print("version:", version)
+    #print("N:", N)
+    #print("rep:", rep)
+    #print("frame_length:", frame_length)
+    #print("coordinate_dtype_code:", coordinate_dtype_code)
+    #print("waveform_dtype_code:", waveform_dtype_code)
+    #print("waveform_scale:", waveform_scale)
     coordinate_dtype = {
             1: np.uint16,
             2: np.int32
