@@ -447,7 +447,7 @@ def grouped_mean_std(
     elif data == "integrated":
         dataframe = self.baseline_integrated_data
     else:
-        raise VaslueError(
+        raise ValueError(
             "data must be either 'eventwise' or 'integrated'"
         )
 
@@ -459,9 +459,11 @@ def grouped_mean_std(
 
     # Extract grouping variable
     group_ids = dataframe[group_col]
+    print(f"Grouping by '{group_col}' with {len(np.unique(group_ids))} unique groups.")
 
     # Extract values
     values = dataframe[value_col]
+    print(f"Calculating statistics for '{value_col}' with {len(values)} total values.")
 
     # Collect values for each group
     groups = {}
@@ -475,12 +477,18 @@ def grouped_mean_std(
     group_sem = []
 
     for gid, vals in groups.items():
-
         # Flatten event/waveform structure
         vals = np.asarray(vals).flatten()
 
+        #print(
+        #    f"Group {gid}: "
+        #    f"total={len(vals)}, "
+        #    f"zeros={np.sum(vals == 0)}, "
+        #    f"NaNs={np.isnan(vals).sum()}, "
+        #    f"valid={np.sum(np.isfinite(vals) & (vals != 0))}"
+        #)
         # Ignore zero values
-        vals = vals[vals != 0]
+        vals = vals[np.isfinite(vals) & (vals != 0)]
 
         group_means.append(vals.mean())
         group_stds.append(vals.std(ddof=1))
@@ -876,7 +884,7 @@ def create_baseline_data_old(self, window=(20, 0, 100), sigma=0, smooth_method=2
     #self.savecsv(name="baseline_integrated_data")
     #self.savebin(name="baseline_waveforms")
     #self.savebin(name="baseline_integrated_data_eventwise")
-def create_baseline_data(self, window=(20, 0, 50), sigma=0, smooth_method=2):
+def create_baseline_data(self, window=(20, 0, 50), sigma=0, smooth_method=2, darkcount=False):
     PM = [
         "PMT_in", "SiPMin_in", "SiPMout_in", "PMT_out", "SiPMin_out", "SiPMout_out"]
     self.baseline_wf = {}
@@ -898,6 +906,7 @@ def create_baseline_data(self, window=(20, 0, 50), sigma=0, smooth_method=2):
     self.baseline_integrated_data_eventwise["j"] = (
         self.waveforms["j"].copy()
     )
+    dx = (self.rec_time_max - self.rec_time_min) / self.frame_length_max
     # ----------------------------------------
     # Baseline correction + integration
     # ----------------------------------------
@@ -944,11 +953,14 @@ def create_baseline_data(self, window=(20, 0, 50), sigma=0, smooth_method=2):
                 smooth_method=smooth_method
             )
             #print("baselines", baselines)
-            integrals = self.riemann_sum_peak_vectorized(
-                corrected,
-                int_window_min,
-                int_window_max
-            )
+            if darkcount:
+                integrals = np.sum(corrected, axis=-1) * dx
+            else:    
+                integrals = self.riemann_sum_peak_vectorized(
+                    corrected,
+                    int_window_min,
+                    int_window_max
+                )
 
             integrals *= sign
 
