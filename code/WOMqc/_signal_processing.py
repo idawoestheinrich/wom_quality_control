@@ -193,87 +193,99 @@ def correct_baseline_min_old(waveform, window, sigma, smooth_method):
     return corrected, baseline_value, min_index
 
 @staticmethod
-def correct_baseline_min(waveforms, window,sigma, smooth_method):
-    wf = np.asarray(waveforms, dtype=np.float32)
-    if wf.ndim != 3:
-        raise ValueError(
-            f"Expected (n, m, samples), got {wf.shape}"
-        )
-    n_samples = wf.shape[-1]
+def correct_baseline_min(waveforms, window, sigma=0, smooth_method=2):
 
+    raw = np.asarray(waveforms, dtype=np.float64)
+
+    if raw.ndim != 3:
+        raise ValueError(f"Expected (n, m, samples), got {raw.shape}")
+    n_samples = raw.shape[-1]
     # --------------------------------------------------
-    # Optional smoothing
+    # Optional smoothing (only for finding quiet region)
     # --------------------------------------------------
+    search_wf = raw.copy()
     if sigma > 0:
+
         if smooth_method == 0:
             kernel_size = int(2 * sigma + 1)
-            kernel = (
-                np.ones(kernel_size, dtype=np.float32)
-                / kernel_size
-            )
-            wf = convolve(
-                wf,
+            kernel = np.ones(kernel_size) / kernel_size
+
+            search_wf = convolve(
+                search_wf,
                 kernel.reshape(1, 1, -1),
                 mode="same"
             )
+
         elif smooth_method == 2:
-            wf = gaussian_filter1d(
-                wf,
+            search_wf = gaussian_filter1d(
+                search_wf,
                 sigma=sigma,
                 axis=-1
             )
+
         else:
-            raise ValueError(
-                f"Unknown smooth_method: {smooth_method}"
-            )
+            raise ValueError(f"Unknown smooth_method: {smooth_method}")
     # --------------------------------------------------
-    # Baseline window
+    # Baseline search window
     # --------------------------------------------------
     length, start, end = window
     length = int(length)
     start = max(0, int(start))
-    end = min(n_samples - length, int(end))
-    if end <= start:
-        raise ValueError(
-            f"Invalid baseline window: {window}"
-        )
-
+    end = min(n_samples - length + 1, int(end))
+    if length <= 0 or end <= start:
+        raise ValueError(f"Invalid baseline window: {window}")
     # --------------------------------------------------
-    # Moving average
+    # Calculate moving averages and variances
     # --------------------------------------------------
-    cumsum = np.cumsum(wf, axis=-1, dtype=np.float32)
-
-    means_full = (
-        cumsum[..., length:]
-        - cumsum[..., :-length]
+    cumsum = np.cumsum(search_wf, axis=-1)
+    cumsum2 = np.cumsum(search_wf**2, axis=-1)
+    cumsum = np.pad(cumsum, [(0, 0), (0, 0), (1, 0)])
+    cumsum2 = np.pad(cumsum2, [(0, 0), (0, 0), (1, 0)])
+    means = (
+        cumsum[..., length:] - cumsum[..., :-length]
     ) / length
-
-    means = means_full[..., start:end]
+    means2 = (
+        cumsum2[..., length:] - cumsum2[..., :-length]
+    ) / length
+    variances = np.maximum(means2 - means**2, 0)
     # --------------------------------------------------
-    # Find minimum absolute baseline
+    # Find window with minimum standard deviation
     # --------------------------------------------------
-    min_index_local = np.argmin(
-        np.abs(means),
-        axis=-1
-    )
-    baseline_value = np.take_along_axis(
-        means,
-        min_index_local[..., None],
-        axis=-1
-    )[..., 0]
-
+    variances = variances[..., start:end]
+    min_index_local = np.argmin(variances, axis=-1)
     min_index = start + min_index_local
 
     # --------------------------------------------------
+    # Calculate baseline from ORIGINAL waveform
+    # --------------------------------------------------
+    #print("raw", raw)
+    raw_cumsum = np.cumsum(raw, axis=-1)
+    raw_cumsum = np.pad(
+        raw_cumsum,
+        [(0, 0), (0, 0), (1, 0)]
+    )
+    baseline_value = (
+        np.take_along_axis(
+            raw_cumsum,
+            (min_index + length)[..., None],
+            axis=-1
+        )[..., 0]
+        -
+        np.take_along_axis(
+            raw_cumsum,
+            min_index[..., None],
+            axis=-1
+        )[..., 0]
+    ) / length
+    # --------------------------------------------------
     # Baseline correction
     # --------------------------------------------------
-    corrected = wf - baseline_value[..., None]
-
+    corrected = search_wf - baseline_value[..., None]
     return corrected, baseline_value, min_index
 
 
 @staticmethod
-def correct_baseline_min_not_vectorized(waveform, window=(20, 10, 90), sigma=0, smooth_method=2):
+def correct_baseline_min_not_vectorized(waveform, window=(20, 0, 50), sigma=0, smooth_method=2):
     """
     Baseline correction using minimum-sum search over a moving window.
     """
@@ -436,7 +448,7 @@ def grouped_mean_std(
     elif data == "integrated":
         dataframe = self.baseline_integrated_data
     else:
-        raise VaslueError(
+        raise ValueError(
             "data must be either 'eventwise' or 'integrated'"
         )
 
@@ -448,9 +460,11 @@ def grouped_mean_std(
 
     # Extract grouping variable
     group_ids = dataframe[group_col]
+    print(f"Grouping by '{group_col}' with {len(np.unique(group_ids))} unique groups.")
 
     # Extract values
     values = dataframe[value_col]
+    print(f"Calculating statistics for '{value_col}' with {len(values)} total values.")
 
     # Collect values for each group
     groups = {}
@@ -464,12 +478,18 @@ def grouped_mean_std(
     group_sem = []
 
     for gid, vals in groups.items():
-
         # Flatten event/waveform structure
         vals = np.asarray(vals).flatten()
 
+        #print(
+        #    f"Group {gid}: "
+        #    f"total={len(vals)}, "
+        #    f"zeros={np.sum(vals == 0)}, "
+        #    f"NaNs={np.isnan(vals).sum()}, "
+        #    f"valid={np.sum(np.isfinite(vals) & (vals != 0))}"
+        #)
         # Ignore zero values
-        vals = vals[vals != 0]
+        vals = vals[np.isfinite(vals) & (vals != 0)]
 
         group_means.append(vals.mean())
         group_stds.append(vals.std(ddof=1))
@@ -620,23 +640,23 @@ def calculate_eventwise_ratios(self):
             "Please run load() with option redo=True"
         )
 
-    if self.baseline_integrated_data_eventwise.get("SiPMin_in_gain") is not None:
+    if self.baseline_integrated_data_eventwise.get("SiPM_ref_in_gain") is not None:
         ratio_map = {
-            "PMT_in": "SiPMin_in_gain",
-            "SiPMout_in_gain": "SiPMin_in_gain",
-            "PMT_out": "SiPMout_out_gain",
-            "SiPMin_out_gain": "SiPMout_out_gain"
+            "PMT_in": "SiPM_ref_in_gain",
+            "SiPM_trans_in_gain": "SiPM_ref_in_gain",
+            "PMT_out": "SiPM_ref_out_gain",
+            "SiPM_trans_out_gain": "SiPM_ref_out_gain"
         }
     else:
         ratio_map = {
-            "PMT_in": "SiPMin_in",
-            "SiPMout_in": "SiPMin_in",
-            "PMT_out": "SiPMout_out",
-            "SiPMin_out": "SiPMout_out"
+            "PMT_in": "SiPM_ref_in",
+            "SiPM_trans_in": "SiPM_ref_in",
+            "PMT_out": "SiPM_ref_out",
+            "SiPM_trans_out": "SiPM_ref_out"
         }
 
     for pm, ref in ratio_map.items():
-        print("Calculating event-wise ratios for:", pm, "with reference:", ref)
+        #print("Calculating event-wise ratios for:", pm, "with reference:", ref)
         pm_arr = np.asarray(
             self.baseline_integrated_data_eventwise[pm],
             dtype=np.float32
@@ -666,7 +686,7 @@ def calculate_eventwise_ratios(self):
         self.baseline_integrated_data_eventwise[
             f"{pm}_ref"
         ] = ratios
-        print("Saved event-wise ratios for:", pm, "in shape", ratios.shape)
+        #print("Saved event-wise ratios for:", pm, "in shape", ratios.shape)
 
 
 def apply_sipm_corrections(self, Vset = 40.7, dVset = 0.1, dT = 0.1):
@@ -679,14 +699,14 @@ def apply_sipm_corrections(self, Vset = 40.7, dVset = 0.1, dT = 0.1):
     #    integrated_data = self.integrated_data
     #elif name == "baseline_integrated_data":    
     #    integrated_data = self.baseline_integrated_data
-    print("Applying SiPM gain corrections")
+    #print("Applying SiPM gain corrections")
     self.baseline_integrated_data["gain_out"], self.baseline_integrated_data["dgain_out"] = self.gain(self.baseline_integrated_data["temp_out"], Vset = Vset, dVset = dVset, dT = dT)
     self.baseline_integrated_data["gain_in"], self.baseline_integrated_data["dgain_in"] = self.gain(self.baseline_integrated_data["temp_in"], Vset = Vset, dVset = dVset, dT = dT)
-    PM = ["SiPMout_in", "SiPMin_in", "SiPMout_out", "SiPMin_out"]
+    PM = ["SiPM_trans_in", "SiPM_ref_in", "SiPM_trans_out", "SiPM_ref_out"]
     Gain = ["gain_out", "gain_in", "gain_out", "gain_in"]
 
     for pm, g in zip(PM, Gain):  
-        print("Correcting SiPM values for:", pm)
+        #print("Correcting SiPM values for:", pm)
         gain_matrix = self.baseline_integrated_data[g].to_numpy(
             dtype=np.float32
         )
@@ -706,39 +726,25 @@ def apply_sipm_corrections(self, Vset = 40.7, dVset = 0.1, dT = 0.1):
         #print(np.shape(gain_matrix), np.shape(self.baseline_integrated_data_eventwise[pm]))
         #dgain_matrix = np.stack(self.baseline_integrated_data[f"d{g}"].values)[:, None , None]
 
-        print("eventwise:", eventwise.shape)
-        print("gain:", gain_matrix.shape)
+        #print("eventwise:", eventwise.shape)
+        #print("gain:", gain_matrix.shape)
 
         with np.errstate(divide="ignore", invalid="ignore"):
             ratio = np.divide(
                 eventwise,
                 gain_matrix,
                 out=np.full_like(eventwise, np.nan),
-                where=gain != 0
+                where=gain_matrix != 0
             )
 
             ratio_err = np.abs(ratio) * np.abs(dgain_matrix / gain_matrix)
 
-        print("ratio:", ratio.shape)
+        #print("ratio:", ratio.shape)
         
         self.baseline_integrated_data_eventwise[f"{pm}_gain"] =  ratio
         self.baseline_integrated_data_eventwise[f"{pm}_gain_err"] = ratio_err
-    if self.integrated_data["j"][0] == 99999999:
-        for pm in PM:
-            ref = self.baseline_integrated_data_eventwise[f"{pm}_gain"][0][self.baseline_integrated_data_eventwise[pm][0]!= 0].mean()
-            if ref != 0:
-                ratio = self.baseline_integrated_data_eventwise[f"{pm}_gain"][1:]/ref
-            #ratio_err = np.abs(ratio) * np.sqrt(1/30*
-            #                (self.baseline_integrated_data_eventwise[f"{pm}_std"][1:]/self.baseline_integrated_data_eventwise[pm][1:])**2 +
-            #                (self.baseline_integrated_data_eventwise[f"{pm}_std"][0]/self.baseline_integrated_data_eventwise[pm][0])**2
-            #            )
-                self.baseline_integrated_data_eventwise[f"{pm}_gain"][1:] = ratio
-            else:
-                print(pm, "ref = 0", ref)
-            #self.baseline_integrated_data_eventwise[f"{pm}_err"] = ratio_err
-
             
-
+    
             
 """
 Create baseline-corrected waveform data and corresponding integrated values.    
@@ -823,7 +829,7 @@ def create_baseline_data_old(self, window=(20, 0, 100), sigma=0, smooth_method=2
                     sigma=sigma,
                     smooth_method=smooth_method
                 )[0]
-                print(f"Baseline correction for {pm}: baseline={baseline}, index={index}")
+                #print(f"Baseline correction for {pm}: baseline={baseline}, index={index}")
                 corrected_row.append(wf_corr)
                 # Integration
                 _, _, area = self.riemann_sum_peak(
@@ -865,9 +871,16 @@ def create_baseline_data_old(self, window=(20, 0, 100), sigma=0, smooth_method=2
     #self.savecsv(name="baseline_integrated_data")
     #self.savebin(name="baseline_waveforms")
     #self.savebin(name="baseline_integrated_data_eventwise")
-def create_baseline_data(self, window=(20, 0, 100), sigma=0, smooth_method=2):
+def create_baseline_data(self, window=(20, 0, 50), sigma=0, smooth_method=2, darkcount=False):
     PM = [
-        "PMT_in", "SiPMin_in", "SiPMout_in", "PMT_out", "SiPMin_out", "SiPMout_out"]
+        "PMT_in",
+        "SiPM_trans_in",
+        "SiPM_ref_in",
+        "PMT_out",
+        "SiPM_trans_out",
+        "SiPM_ref_out"
+    ]
+
     self.baseline_wf = {}
     self.baseline_integrated_data = {}
     self.baseline_integrated_data_eventwise = {}
@@ -887,6 +900,7 @@ def create_baseline_data(self, window=(20, 0, 100), sigma=0, smooth_method=2):
     self.baseline_integrated_data_eventwise["j"] = (
         self.waveforms["j"].copy()
     )
+    dx = (self.rec_time_max - self.rec_time_min) / self.frame_length_max
     # ----------------------------------------
     # Baseline correction + integration
     # ----------------------------------------
@@ -903,7 +917,8 @@ def create_baseline_data(self, window=(20, 0, 100), sigma=0, smooth_method=2):
                     int_window_max = self.int_window_max_SiPM
                     sign = 1
         else:
-                    raise ValueError(f"Unknown PM type: {pm}")
+            raise ValueError(f"Unknown PM type: {pm}")
+        
         waveforms = np.asarray(self.waveforms[pm], dtype=np.float32)
 
         if waveforms.ndim == 2:
@@ -932,12 +947,15 @@ def create_baseline_data(self, window=(20, 0, 100), sigma=0, smooth_method=2):
                 sigma=sigma,
                 smooth_method=smooth_method
             )
-
-            integrals = self.riemann_sum_peak_vectorized(
-                corrected,
-                int_window_min,
-                int_window_max
-            )
+            #print("baselines", baselines)
+            if darkcount:
+                integrals = np.sum(corrected, axis=-1) * dx
+            else:    
+                integrals = self.riemann_sum_peak_vectorized(
+                    corrected,
+                    int_window_min,
+                    int_window_max
+                )
 
             integrals *= sign
 
@@ -953,9 +971,9 @@ def create_baseline_data(self, window=(20, 0, 100), sigma=0, smooth_method=2):
         # Store eventwise data
         # ----------------------------------------
         self.baseline_wf[pm] = corrected_all
-        print(f"Stored baseline-corrected waveforms for {pm}.")
+        #print(f"Stored baseline-corrected waveforms for {pm}.")
         self.baseline_integrated_data_eventwise[pm] = integrals_all
-        print(f"Stored event-wise integrated data for {pm}.")
+        #print(f"Stored event-wise integrated data for {pm}.")
         # ----------------------------------------
         # Mean and standard deviation
         # over the m waveforms
@@ -975,7 +993,6 @@ def create_baseline_data(self, window=(20, 0, 100), sigma=0, smooth_method=2):
             integrals_all,
             np.nan
         )
-
         # Mean, ignoring zeros
         means = np.nanmean(values, axis=1)
 
@@ -999,24 +1016,24 @@ def create_baseline_data(self, window=(20, 0, 100), sigma=0, smooth_method=2):
         )
 
         self.baseline_integrated_data[pm] = means
-        print(f"Stored mean integrated data for {pm}.") 
+        #print(f"Stored mean integrated data for {pm}.") 
         self.baseline_integrated_data[pm + "_std"] = stds
-        print(f"Stored standard deviation of integrated data for {pm}.")
+        #print(f"Stored standard deviation of integrated data for {pm}.")
 
     # ----------------------------------------
     # Inspect before DataFrame
     # ----------------------------------------
-    print("\nBefore DataFrame:")
+    #print("\nBefore DataFrame:")
 
-    for key, value in self.baseline_integrated_data.items():
-        print(
-            key,
-            type(value),
-            np.shape(value),
-            getattr(value, "dtype", None),
-            getattr(value, "nbytes", 0) / 1e6,
-            "MB"
-        )
+    #for key, value in self.baseline_integrated_data.items():
+    #    print(
+    #        key,
+    #        type(value),
+    #        np.shape(value),
+    #        getattr(value, "dtype", None),
+    #        getattr(value, "nbytes", 0) / 1e6,
+    #        "MB"
+    #    )
 
     #print("Creating DataFrame...")
 

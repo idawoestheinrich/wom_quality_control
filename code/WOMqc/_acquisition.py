@@ -141,16 +141,16 @@ Returns:
     tuple:
         PMT_data : np.ndarray
             Raw PMT waveforms
-        SiPMin : np.ndarray
-            Raw SiPM-in waveforms
-        SiPMout : np.ndarray
-            Raw SiPM-out waveforms
+        SiPM_trans_waveforms : np.ndarray
+            Raw SiPM-trans waveforms
+        SiPM_ref_waveforms : np.ndarray
+            Raw SiPM-ref waveforms
         PMT_mean : float
         PMT_std  : float
-        SiPMin_mean : float
-        SiPMin_std  : float
-        SiPMout_mean : float
-        SiPMout_std  : float
+        SiPM_trans_mean : float
+        SiPM_trans_std  : float
+        SiPM_ref_mean : float
+        SiPM_ref_std  : float
 """
 def getdata(self, ch): #channel number ch, number of waveforms taken per position rep
     """
@@ -262,31 +262,33 @@ def getdata(self, ch): #channel number ch, number of waveforms taken per positio
         #int_data = pd.DataFrame(int_data)
         #int_data.to_csv(dfname, sep=",")
     if ch == 1: #[(1, "in"), (2, "out")]
-        PMT_ratio = PMT_int/SiPMin_int
-        SiPM_ratio = SiPMout_int/SiPMin_int
+        SiPM_trans = SiPMout_int
         SiPM_ref = SiPMin_int
+        SiPM_trans_waveforms = SiPMout
+        SiPM_ref_waveforms = SiPMin
     elif ch == 2: 
-        PMT_ratio = PMT_int/SiPMin_int
-        SiPM_ratio = SiPMin_int/SiPMout_int
+        SiPM_trans = SiPMin_int
         SiPM_ref = SiPMout_int
+        SiPM_trans_waveforms = SiPMin
+        SiPM_ref_waveforms = SiPMout
     else:
         self.logger.warning("choose channel ", ch)        
     if self.rep > 1:
         return (
             PMT_data, #waveforms
-            SiPMin, #waveforms
-            SiPMout, #waveforms
-            np.mean(PMT_ratio), np.std(PMT_ratio, ddof=1),  #mean of the integrals over rep waverforms and standarddeviation
-            np.mean(SiPM_ratio), np.std(SiPM_ratio, ddof=1), #mean of the integrals over rep waverforms and standarddeviation
+            SiPM_trans_waveforms, #waveforms
+            SiPM_ref_waveforms, #waveforms
+            np.mean(PMT_int), np.std(PMT_int, ddof=1),  #mean of the integrals over rep waverforms and standarddeviation
+            np.mean(SiPM_trans), np.std(SiPM_trans, ddof=1), #mean of the integrals over rep waverforms and standarddeviation
             np.mean(SiPM_ref), np.std(SiPM_ref, ddof=1) #mean of the integrals over rep waverforms and standarddeviation
         )
     elif self.rep == 1:
         return (
             PMT_data, #waveforms
-            SiPMin, #waveforms
-            SiPMout, #waveforms
-            PMT_ratio[0], PMT_ratio[0],  #mean of the integrals over rep waverforms and standarddeviation
-            SiPM_ratio[0], SiPM_ratio[0], #mean of the integrals over rep waverforms and standarddeviation
+            SiPM_trans_waveforms,#waveforms
+            SiPM_ref_waveforms, #waveforms
+            PMT_int[0], PMT_int[0],  #mean of the integrals over rep waverforms and standarddeviation
+            SiPM_trans[0], SiPM_trans[0], #mean of the integrals over rep waverforms and standarddeviation
             SiPM_ref[0], SiPM_ref[0] #mean of the integrals over rep waverforms and standarddeviation
         )
     else: 
@@ -343,21 +345,21 @@ def measure_position(self, j, i):
         row["temp_out"] = temp_out         
     for ch, tag in [(1, "in"), (2, "out")]:
         (
-            PMT_data, SiPMin, SiPMout,
-            PMT_ratio, PMT_ratio_std, #PMT response
-            SiPM_ratio, SiPM_ratio_std,  #SiPM_ratio, std - transmission
+            PMT_data, SiPM_trans_waveforms, SiPM_ref_waveforms,
+            PMT, PMT_std, #PMT response
+            SiPM_trans, SiPM_trans_std,  #SiPM_trans, std - transmission
             SiPM_ref, SiPM_ref_std  #SiPM_ref, std - reference
         ) = self.getdata(ch) #get waveforms, their integrals and standard deviation
         if self.plot_waveform:
-            self.update_example_waveform([np.array(PMT_data).mean(axis=0), np.array(SiPMin).mean(axis=0), np.array(SiPMout).mean(axis=0)], j, i, [f"PMT_{tag}", f"SiPMin_{tag}", f"SiPMout_{tag}"])
+            self.update_example_waveform([np.array(PMT_data).mean(axis=0), np.array(SiPM_trans_waveforms).mean(axis=0), np.array(SiPM_ref_waveforms).mean(axis=0)], j, i, [f"PMT_{tag}", f"SiPM_trans_{tag}", f"SiPM_ref_{tag}"])
             time.sleep(0.1)
         waveforms[f"PMT_{tag}"] = PMT_data
-        waveforms[f"SiPMin_{tag}"] = SiPMin
-        waveforms[f"SiPMout_{tag}"] = SiPMout                        
-        row[f"PMT_ratio_{tag}"] = PMT_ratio
-        row[f"PMT_ratio_{tag}_std"] = PMT_ratio_std
-        row[f"SiPM_ratio_{tag}"] = SiPM_ratio
-        row[f"SiPM_ratio_{tag}_std"] = SiPM_ratio_std
+        waveforms[f"SiPM_trans_{tag}"] = SiPM_trans_waveforms
+        waveforms[f"SiPM_ref_{tag}"] = SiPM_ref_waveforms
+        row[f"PMT_{tag}"] = PMT
+        row[f"PMT_{tag}_std"] = PMT_std
+        row[f"SiPM_trans_{tag}"] = SiPM_trans
+        row[f"SiPM_trans_{tag}_std"] = SiPM_trans_std
         row[f"SiPM_ref_{tag}"] = SiPM_ref
         row[f"SiPM_ref_{tag}_std"] = SiPM_ref_std        
     #if self.dry_run == False:
@@ -516,28 +518,27 @@ def run_darkcount_scan(self, darkcount, external_trigger):
                                         break     
                     data[ch_idx ,count] = datatemp[channel]
                 waveforms[f"PMT_{tag}"] = data[0]
-                waveforms[f"SiPMin_{tag}"] = data[1]              
-                waveforms[f"SiPMout_{tag}"] = data[2]              
-                row[f"PMT_{tag}"] = int_data[0][0]           
-                row[f"PMT_{tag}_std"] = 0           
-                row[f"SiPMin_{tag}"] = int_data[1][0]         
-                row[f"SiPMin_{tag}_std"] = 0         
-                row[f"SiPMout_{tag}"] = int_data[2][0]          
-                row[f"SiPMout_{tag}_std"] = 0  
+                if tag == "in":
+                    waveforms[f"SiPM_ref_{tag}"] = data[1]              
+                    waveforms[f"SiPM_trans_{tag}"] = data[2]              
+                    row[f"PMT_{tag}"] = int_data[0][0]           
+                    row[f"PMT_{tag}_std"] = 0           
+                    row[f"SiPM_ref_{tag}"] = int_data[1][0]         
+                    row[f"SiPM_ref_{tag}_std"] = 0         
+                    row[f"SiPM_trans_{tag}"] = int_data[2][0]          
+                    row[f"SiPM_trans_{tag}_std"] = 0
+                elif tag == "out":    
+                    waveforms[f"SiPM_trans_{tag}"] = data[1]              
+                    waveforms[f"SiPM_ref_{tag}"] = data[2]              
+                    row[f"PMT_{tag}"] = int_data[0][0]           
+                    row[f"PMT_{tag}_std"] = 0           
+                    row[f"SiPM_trans_{tag}"] = int_data[1][0]         
+                    row[f"SiPM_trans_{tag}_std"] = 0         
+                    row[f"SiPM_ref_{tag}"] = int_data[2][0]          
+                    row[f"SiPM_ref_{tag}_std"] = 0
 
-                   # other = "out" if tag == "in" else "in"   
-
-                   # waveforms[f"PMT_{other}"] = np.zeros((3, self.rep, self.frame_length_max))[0]
-                   # waveforms[f"SiPMin_{other}"] = np.zeros((3, self.rep, self.frame_length_max))[1]              
-                   # waveforms[f"SiPMout_{other}"] = np.zeros((3, self.rep, self.frame_length_max))[2]              
-                   # row[f"PMT_{other}"] = np.zeros((3, self.rep))[0][0]           
-                   # row[f"PMT_std_{other}"] = 0           
-                   # row[f"SiPMin_{other}"] = np.zeros((3, self.rep))[1][0]         
-                   # row[f"SiPMin_std_{other}"] = 0         
-                   # row[f"SiPMout_{other}"] = np.zeros((3, self.rep))[2][0]          
-                   # row[f"SiPMout_std_{other}"] = 0  
                 if self.plot_waveform:
-                    self.update_example_waveform([np.array(waveforms[f"PMT_{tag}"]).mean(axis=0), np.array(waveforms[f"SiPMin_{tag}"]).mean(axis=0), np.array(waveforms[f"SiPMout_{tag}"]).mean(axis=0)], 0, i, [f"PMT_{tag}", f"SiPMin_{tag}", f"SiPMout_{tag}"])
+                    self.update_example_waveform([np.array(waveforms[f"PMT_{tag}"]).mean(axis=0), np.array(waveforms[f"SiPM_trans_{tag}"]).mean(axis=0), np.array(waveforms[f"SiPM_ref_{tag}"]).mean(axis=0)], 0, i, [f"PMT_{tag}", f"SiPM_trans_{tag}", f"SiPM_ref_{tag}"])
                     time.sleep(0.1)
 
             
@@ -669,8 +670,8 @@ def run(self):
             self.savebin()
             self.motor_off()  
             if self.plot_heatmap:
-                self.heatmap_WOM(ch1="PMT_ratio_in", ch2="PMT_ratio_in_std", baseline_subtract= False)
-                self.heatmap_WOM(ch1="SiPM_ratio_in", ch2="SiPM_ratio_in_std", baseline_subtract= False)
+                self.heatmap_WOM(ch1="PMT_in", ch2="PMT_in_std", baseline_subtract= False)
+                self.heatmap_WOM(ch1="SiPM_trans_in", ch2="SiPM_trans_in_std", baseline_subtract= False)
                 self.heatmap_WOM(ch1="SiPM_ref_in", ch2="SiPM_ref_in_std", baseline_subtract= False)
         except Exception as e:
             self.logger.error("Measurement failed:", e)
@@ -722,7 +723,7 @@ def run_longterm(self, darkcount = True, external_trigger = False):
         self.savebin()
         if self.plot_heatmap:
             self.light_yield_1dim()
-            self.light_yield_1dim(ch1= "PMT_out", ch2 = "SiPMin_out", ch3="SiPMout_out")
+            self.light_yield_1dim(ch1= "PMT_out", ch2 = "SiPM_trans_out", ch3="SiPM_ref_out")
     except Exception as e:
         self.logger.error("Measurement failed:", e)
         #self.move_home()
@@ -862,16 +863,7 @@ def run_darkcount_scan_old(self, darkcount, external_trigger):
             row[f"SiPMin_{tag}_std"] = 0         
             row[f"SiPMout_{tag}"] = int_data[2][0]          
             row[f"SiPMout_{tag}_std"] = 0  
-                # other = "out" if tag == "in" else "in"   
-                # waveforms[f"PMT_{other}"] = np.zeros((3, self.rep, self.frame_length_max))[0]
-                # waveforms[f"SiPMin_{other}"] = np.zeros((3, self.rep, self.frame_length_max))[1]              
-                # waveforms[f"SiPMout_{other}"] = np.zeros((3, self.rep, self.frame_length_max))[2]              
-                # row[f"PMT_{other}"] = np.zeros((3, self.rep))[0][0]           
-                # row[f"PMT_std_{other}"] = 0           
-                # row[f"SiPMin_{other}"] = np.zeros((3, self.rep))[1][0]         
-                # row[f"SiPMin_std_{other}"] = 0         
-                # row[f"SiPMout_{other}"] = np.zeros((3, self.rep))[2][0]          
-                # row[f"SiPMout_std_{other}"] = 0  
+
             if self.plot_waveform:
                 self.update_example_waveform([np.array(waveforms[f"PMT_{tag}"]).mean(axis=0), np.array(waveforms[f"SiPMin_{tag}"]).mean(axis=0), np.array(waveforms[f"SiPMout_{tag}"]).mean(axis=0)], 0, i, [f"PMT_{tag}", f"SiPMin_{tag}", f"SiPMout_{tag}"])
                 time.sleep(0.1)

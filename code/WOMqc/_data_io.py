@@ -23,7 +23,33 @@ metadata saving/loading, and binary/CSV persistence.
 '''
 
 MAGIC = b"WOMBIN01"
-VERSION = 1
+VERSION = 2# changed from 1 to 2 on 2026-11-17 when changed the channel names from SiPMin/SiPMout to SiPM_ref/SiPM_trans
+
+NEW_CHANNELS = [
+    "PMT_in",
+    "SiPM_trans_in",
+    "SiPM_ref_in",
+    "PMT_out",
+    "SiPM_trans_out",
+    "SiPM_ref_out",
+]
+
+OLD_CHANNELS = [
+    "PMT_in",
+    "SiPMin_in",
+    "SiPMout_in",
+    "PMT_out",
+    "SiPMin_out",
+    "SiPMout_out",
+]
+
+# Old name -> New name
+CHANNEL_MAPPING = {
+    "SiPMin_in": "SiPM_ref_in",
+    "SiPMout_in": "SiPM_trans_in",
+    "SiPMin_out": "SiPM_trans_out",
+    "SiPMout_out": "SiPM_ref_out",
+}
 
 def _setup_logger(self):
     # 2️⃣ configure logger **here, inside the class**
@@ -152,8 +178,9 @@ Format header
 j indices
 i indices
 waveform arrays for all channels:
-PMT_in / SiPMin_in / SiPMout_in
-PMT_out / SiPMin_out / SiPMout_out
+Version 1 : PMT_in / SiPMin_in / SiPMout_in, PMT_out / SiPMin_out / SiPMout_out
+Version 2 : PMT_in / SiPM_trans_in/ SiPM_ref_in / PMT_out / SiPM_trans_out/ SiPM_ref_out / 
+
 Waveform blocks have shape:
 (N_positions, repetitions, frame_length)
 Raw ADC waveforms are stored as int16 counts and converted back to physical values 
@@ -186,18 +213,24 @@ def savebin(self, name="waveforms"):
     waveform_scale = np.float32(0.00053467)
     coordinate_dtype_code = 1       # uint16
     waveform_dtype_code = 1         # int16
-    channels = [
-        "PMT_in",
-        "SiPMin_in",
-        "SiPMout_in",
-        "PMT_out",
-        "SiPMin_out",
-        "SiPMout_out",
-    ]
+    channels = NEW_CHANNELS
 
     arrays = {}
     for channel in channels:
-        data = np.stack(waveforms[channel]).astype(np.float32)
+        # Find the corresponding old channel name if necessary
+        old_channel = next(
+            (old for old, new in CHANNEL_MAPPING.items()
+            if new == channel),
+            channel
+        )
+        if channel in waveforms:
+            data = np.stack(waveforms[channel]).astype(np.float32)
+        elif old_channel in waveforms:
+            data = np.stack(waveforms[old_channel]).astype(np.float32)
+        else:
+            raise KeyError(f"Missing channel: {channel}")
+
+
         if name == "baseline_integrated_data_eventwise":
             # These are already integrated values, so don't
             # use ADC conversion here unless verified separately.
@@ -237,7 +270,7 @@ def savebin(self, name="waveforms"):
         # Waveforms
         for channel in channels:
             arrays[channel].tofile(f)
-            print(f"Saved {channel} to {filename}")
+            #print(f"Saved {channel} to {filename}")
 
 
 """
@@ -385,11 +418,11 @@ def _readbin_old(self, i = 1, name="waveforms"):
             "j": j_arr,
             "i": i_arr,
             "PMT_in": PMT_LEDin_all,
-            "SiPMin_in": SiPMin_LEDin_all,
-            "SiPMout_in": SiPMout_LEDin_all,
+            "SiPM_ref_in": SiPMin_LEDin_all,
+            "SiPM_trans_in": SiPMout_LEDin_all,
             "PMT_out": PMT_LEDout_all,
-            "SiPMin_out": SiPMin_LEDout_all,
-            "SiPMout_out": SiPMout_LEDout_all,
+            "SiPM_trans_out": SiPMin_LEDout_all,
+            "SiPM_ref_out": SiPMout_LEDout_all,
         }
 
         self._store_readbin_data(data, name)
@@ -417,18 +450,18 @@ def _readbin_new(self, f, name):
 
     if magic != MAGIC:
         raise ValueError("Invalid WOM binary file")
-    if version != 1:
+    if version not in (1,2):
         raise ValueError(
             f"Unsupported WOM binary version: {version}"
         )
-    print("magic:", magic)
-    print("version:", version)
-    print("N:", N)
-    print("rep:", rep)
-    print("frame_length:", frame_length)
-    print("coordinate_dtype_code:", coordinate_dtype_code)
-    print("waveform_dtype_code:", waveform_dtype_code)
-    print("waveform_scale:", waveform_scale)
+    #print("magic:", magic)
+    #print("version:", version)
+    #print("N:", N)
+    #print("rep:", rep)
+    #print("frame_length:", frame_length)
+    #print("coordinate_dtype_code:", coordinate_dtype_code)
+    #print("waveform_dtype_code:", waveform_dtype_code)
+    #print("waveform_scale:", waveform_scale)
     coordinate_dtype = {
             1: np.uint16,
             2: np.int32
@@ -459,14 +492,10 @@ def _readbin_new(self, f, name):
 
     channels = {}
 
-    for channel in [
-        "PMT_in",
-        "SiPMin_in",
-        "SiPMout_in",
-        "PMT_out",
-        "SiPMin_out",
-        "SiPMout_out",
-    ]:
+    #Determine the channel order from the file version
+    channel_names = OLD_CHANNELS if version == 1 else NEW_CHANNELS
+
+    for channel in channel_names:
 
         arr = np.fromfile(
             f,
@@ -478,7 +507,10 @@ def _readbin_new(self, f, name):
         if waveform_dtype == np.int16:
             arr = arr.astype(np.float32) * waveform_scale
 
-        channels[channel] = arr
+           # Convert old channel names to new channel names
+        new_channel = CHANNEL_MAPPING.get(channel, channel)
+        print(f"Reading channel: {channel} -> {new_channel}")
+        channels[new_channel] = arr
 
     data = {
         "j": j_arr,
@@ -566,6 +598,7 @@ def load(cls, filename, redo=False, window=(20, 0, 100), sigma=0, smooth_method=
             obj.calculate_eventwise_ratios()
             obj.apply_sipm_corrections(Vset = Vset, dVset=dVset, dT = dT)
             obj.calculate_eventwise_ratios()
+            obj.write_eventwise_to_integrated_data()    
         if redo:
             print("Redoing baseline correction with new parameters...")
             obj.create_baseline_data(window=window, sigma=sigma, smooth_method=smooth_method)

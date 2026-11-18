@@ -32,7 +32,7 @@ scan = WOMqc(
     dry_run = False,
     PMsoff= False # Photomultiplier off? True -> no filter on the saved waveforms - False-> abs(area) > 1e-10
     )
-scan.run()
+#scan.run()
 
 #scan.heatmap_WOM(baseline_subtract = False)
 
@@ -59,7 +59,7 @@ scan.run()
 #WOM16_inner_trans_covered = WOMqc.load("20260902_testbeam_WOM16_2mmFreiburgXT_inner_transmission_covered")
 #print("WOM16_inner_trans_covered loaded")
 
-#WOM16_outer_trans_covered = WOMqc.load("20260902_testbeam_WOM16_2mmFreiburgXT_outer_transmission_covered")
+WOM16_outer_trans_covered = WOMqc.load("20260902_testbeam_WOM16_2mmFreiburgXT_outer_transmission_covered")
 #print("WOM16_outer_trans_covered loaded")
 #uncoated_inner_trans_covered = WOMqc.load("20260902_uncoated_WOM_2mmFreiburgXT_inner_transmission_covered")
 #print("uncoated_inner_trans_covered loaded")
