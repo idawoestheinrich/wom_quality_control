@@ -258,6 +258,7 @@ def correct_baseline_min(waveforms, window, sigma=0, smooth_method=2):
     # --------------------------------------------------
     # Calculate baseline from ORIGINAL waveform
     # --------------------------------------------------
+    #print("raw", raw)
     raw_cumsum = np.cumsum(raw, axis=-1)
     raw_cumsum = np.pad(
         raw_cumsum,
@@ -639,19 +640,19 @@ def calculate_eventwise_ratios(self):
             "Please run load() with option redo=True"
         )
 
-    if self.baseline_integrated_data_eventwise.get("SiPMin_in_gain") is not None:
+    if self.baseline_integrated_data_eventwise.get("SiPM_ref_in_gain") is not None:
         ratio_map = {
-            "PMT_in": "SiPMin_in_gain",
-            "SiPMout_in_gain": "SiPMin_in_gain",
-            "PMT_out": "SiPMout_out_gain",
-            "SiPMin_out_gain": "SiPMout_out_gain"
+            "PMT_in": "SiPM_ref_in_gain",
+            "SiPM_trans_in_gain": "SiPM_ref_in_gain",
+            "PMT_out": "SiPM_ref_out_gain",
+            "SiPM_trans_out_gain": "SiPM_ref_out_gain"
         }
     else:
         ratio_map = {
-            "PMT_in": "SiPMin_in",
-            "SiPMout_in": "SiPMin_in",
-            "PMT_out": "SiPMout_out",
-            "SiPMin_out": "SiPMout_out"
+            "PMT_in": "SiPM_ref_in",
+            "SiPM_trans_in": "SiPM_ref_in",
+            "PMT_out": "SiPM_ref_out",
+            "SiPM_trans_out": "SiPM_ref_out"
         }
 
     for pm, ref in ratio_map.items():
@@ -701,7 +702,7 @@ def apply_sipm_corrections(self, Vset = 40.7, dVset = 0.1, dT = 0.1):
     #print("Applying SiPM gain corrections")
     self.baseline_integrated_data["gain_out"], self.baseline_integrated_data["dgain_out"] = self.gain(self.baseline_integrated_data["temp_out"], Vset = Vset, dVset = dVset, dT = dT)
     self.baseline_integrated_data["gain_in"], self.baseline_integrated_data["dgain_in"] = self.gain(self.baseline_integrated_data["temp_in"], Vset = Vset, dVset = dVset, dT = dT)
-    PM = ["SiPMout_in", "SiPMin_in", "SiPMout_out", "SiPMin_out"]
+    PM = ["SiPM_trans_in", "SiPM_ref_in", "SiPM_trans_out", "SiPM_ref_out"]
     Gain = ["gain_out", "gain_in", "gain_out", "gain_in"]
 
     for pm, g in zip(PM, Gain):  
@@ -733,7 +734,7 @@ def apply_sipm_corrections(self, Vset = 40.7, dVset = 0.1, dT = 0.1):
                 eventwise,
                 gain_matrix,
                 out=np.full_like(eventwise, np.nan),
-                where=gain != 0
+                where=gain_matrix != 0
             )
 
             ratio_err = np.abs(ratio) * np.abs(dgain_matrix / gain_matrix)
@@ -742,22 +743,8 @@ def apply_sipm_corrections(self, Vset = 40.7, dVset = 0.1, dT = 0.1):
         
         self.baseline_integrated_data_eventwise[f"{pm}_gain"] =  ratio
         self.baseline_integrated_data_eventwise[f"{pm}_gain_err"] = ratio_err
-    if self.integrated_data["j"][0] == 99999999:
-        for pm in PM:
-            ref = self.baseline_integrated_data_eventwise[f"{pm}_gain"][0][self.baseline_integrated_data_eventwise[pm][0]!= 0].mean()
-            if ref != 0:
-                ratio = self.baseline_integrated_data_eventwise[f"{pm}_gain"][1:]/ref
-            #ratio_err = np.abs(ratio) * np.sqrt(1/30*
-            #                (self.baseline_integrated_data_eventwise[f"{pm}_std"][1:]/self.baseline_integrated_data_eventwise[pm][1:])**2 +
-            #                (self.baseline_integrated_data_eventwise[f"{pm}_std"][0]/self.baseline_integrated_data_eventwise[pm][0])**2
-            #            )
-                self.baseline_integrated_data_eventwise[f"{pm}_gain"][1:] = ratio
-            else:
-                print(pm, "ref = 0", ref)
-            #self.baseline_integrated_data_eventwise[f"{pm}_err"] = ratio_err
-
             
-
+    
             
 """
 Create baseline-corrected waveform data and corresponding integrated values.    
@@ -886,7 +873,14 @@ def create_baseline_data_old(self, window=(20, 0, 100), sigma=0, smooth_method=2
     #self.savebin(name="baseline_integrated_data_eventwise")
 def create_baseline_data(self, window=(20, 0, 50), sigma=0, smooth_method=2, darkcount=False):
     PM = [
-        "PMT_in", "SiPMin_in", "SiPMout_in", "PMT_out", "SiPMin_out", "SiPMout_out"]
+        "PMT_in",
+        "SiPM_trans_in",
+        "SiPM_ref_in",
+        "PMT_out",
+        "SiPM_trans_out",
+        "SiPM_ref_out"
+    ]
+
     self.baseline_wf = {}
     self.baseline_integrated_data = {}
     self.baseline_integrated_data_eventwise = {}
@@ -923,7 +917,8 @@ def create_baseline_data(self, window=(20, 0, 50), sigma=0, smooth_method=2, dar
                     int_window_max = self.int_window_max_SiPM
                     sign = 1
         else:
-                    raise ValueError(f"Unknown PM type: {pm}")
+            raise ValueError(f"Unknown PM type: {pm}")
+        
         waveforms = np.asarray(self.waveforms[pm], dtype=np.float32)
 
         if waveforms.ndim == 2:

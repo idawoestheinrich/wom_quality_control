@@ -140,16 +140,16 @@ def plot_integral_over_time(self, PM):
 Plot heatmaps of the integrated data for one or two of the following options (ch1 = "...", ch2 = "..."):
     temp_in,
     temp_out,
-    PMT_ratio_in,
-    PMT_ratio_in_std,
-    SiPM_ratio_in,
-    SiPM_ratio_in_std,
+    PMT_in,
+    PMT_in_std,
+    SiPM_trans_in,
+    SiPM_trans_in_std,
     SiPM_ref_in,
     SiPM_ref_in_std,
-    PMT_ratio_out,
-    PMT_ratio_out_std,
-    SiPM_ratio_out,
-    SiPM_ratio_out_std,
+    PMT_out,
+    PMT_out_std,
+    SiPM_trans_out,
+    SiPM_trans_out_std,
     SiPM_ref_out,
     SiPM_ref_out_std
 vmin, vmax: color scale limits as list vmin = [vmin], vmax = [vmax]/ vmin = [vmin_ch1, vmin_ch2], vmax = [vmax_ch1, vmax_ch2]
@@ -160,7 +160,7 @@ baseline_subtract = True - set to False if you want to see the raw data without 
 normalize = False,  - Set to True if you want to see the plot normalized to its mean
 remove_rows = [0,0] : must be an array with [how many first rows should be removed, how many last rows should be removed]
 """
-def heatmap_WOM(self, ch1= "PMT_ratio_in", ch2 = None, vmin=None, vmax=None,
+def heatmap_WOM(self, ch1= "PMT_in", ch2 = None, vmin=None, vmax=None,
                 step_size = 6.55, colorlabel = None, title = None,  baseline_subtract = True, normalize = False, remove_rows = [0,0]):
     if baseline_subtract:
         if hasattr(self, "baseline_integrated_data"):
@@ -196,7 +196,7 @@ def heatmap_WOM(self, ch1= "PMT_ratio_in", ch2 = None, vmin=None, vmax=None,
             colorbar_label = ["Error [Vxs]"]
         elif "pull" in ch1:
             colorbar_label = ["Difference/Error"]    
-        elif "ref" in ch1 or "ratio" in ch1:
+        elif "in_ref" in ch1 or "out_ref" in ch1 or "ratio" in ch1:
             colorbar_label = ["Integrated yield / Reference"]
         elif "temp" in ch1:
             colorbar_label = ["Temperature [°C]"]   
@@ -227,7 +227,7 @@ def heatmap_WOM(self, ch1= "PMT_ratio_in", ch2 = None, vmin=None, vmax=None,
                 colorbar_label.append("Error [Vxs]")
             elif "pull" in ch2:
                 colorbar_label.append("Difference/Error")    
-            elif "ref" in ch2 or "ratio" in ch2:
+            elif "in_ref" in ch2 or "out_ref" in ch2 or "ratio" in ch2:
                 colorbar_label.append("Integrated yield / Reference")
             elif "temp" in ch2:
                 colorbar_label.append("Temperature [°C]")   
@@ -327,7 +327,7 @@ Returns:
 Saves:
     PDF figure in the measurement folder.
 """
-def light_yield_1dim(self, ch1= "PMT_in", ch2 = "SiPMin_in", ch3="SiPMout_in"):
+def light_yield_1dim(self, ch1= "PMT_in", ch2 = "SiPM_trans_in", ch3="SiPM_ref_in"):
     # Extract values for heatmap x,y
     x = self.integrated_data["time"]    
     if "std" in ch1:
@@ -374,16 +374,16 @@ def light_yield_1dim(self, ch1= "PMT_in", ch2 = "SiPMin_in", ch3="SiPMout_in"):
     return 0    
 '''
 Print the charge spectrum for one of the following options:
-        PMT_ratio_in,
-        SiPM_ratio_in, 
+        PMT_in,
+        SiPM_trans_in, 
         SiPM_ref_in,
         PMT_out,
-        SiPMin_out,
-        SiPMout_out
+        SiPM_trans_out,
+        SiPM_ref_out
     bins: number of bins in the histogram
     vmin, vmax: limits of the x-axis
     '''    
-def charge_spectrum(self, ch="PMT_ratio_in", bins=90, vmin=None, vmax=None):
+def charge_spectrum(self, ch="PMT_in", bins=90, vmin=None, vmax=None):
     fig, ax = plt.subplots(figsize=(7, 5), facecolor="white")
     data = self.integrated_data[self.integrated_data[ch] != 0]
     ax.hist(
@@ -403,7 +403,7 @@ def charge_spectrum(self, ch="PMT_ratio_in", bins=90, vmin=None, vmax=None):
         j : int or float
             Scan j-position    
         pm : str
-            Channel name, e.g. "SiPMin_in"    
+            Channel name, e.g. "SiPM_trans_in"    
         baseline_corrected : bool
             If True, plots baseline-corrected waveforms.
             Otherwise plots raw waveforms.
@@ -454,11 +454,11 @@ def plot_waveforms_position(
             wf_data = self.baseline_wf[pm][idx]
         else:
             wf_data = self.waveforms[pm][idx]                
-        if "in_in" in pm or "out_out" in pm:
+        if "ref_in" in pm or "ref_out" in pm:
                 label = f"{pm} reference at i={i}, j={j}"
                 color = 'green'
                 color_line ='darkgreen'                    
-        elif "in_out" in pm or "out_in" in pm:
+        elif "trans_in" in pm or "trans_out" in pm:
                 label = f"{pm} transmission at i={i}, j={j}" 
                 color = 'blue'  
                 color_line ='darkblue'                    
