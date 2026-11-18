@@ -8,13 +8,13 @@ import matplotlib.pyplot as plt
 
 scan = WOMqc(
     device_ip = "[fe80::7269:79ff:feb0:1098]", # Bitte anpassen! fe80::7269:79ff:feb0:1098%11 fe80::7269:79ff:feb0:109 
-    WOMname = "testbeam_WOM_16",#test",#"WOM_FreiburgXT2mm_6_55mm_new_cover_thin_coating_wo_coupling",#
+    WOMname = "testbeam_WOM_16_Rot_315_Deg",#"testbeam_CellA_top_3mm_2",#WOM_FreiburgXT2mm_6_55mm_new_cover_thin_coating_wo_coupling",#,#
     #"WOM_FreiburgXT2mm_6_55mm_old_reflector_thin_coating_4_covered_gab_ring",
     ni = 29, #vertical step count - in longterm measurments of the number of iterations 
     nj = 20,#rotation step count 
     rep = 30,#repititons
-    pulsewidth_ch1 = 87e-09, #77e-9
-    pulsewidth_ch2 = 82e-9,
+    pulsewidth_ch1 = 85e-09, #77e-9
+    pulsewidth_ch2 = 81e-9,
     voltage_range_PMT  = "400mVpp", 
     voltage_range_SiPM = "4Vpp", #"400mVpp" with no or uncoated WOM or "4Vpp" with coated WOM
     rec_time_min = 0.3e-6,
@@ -26,7 +26,7 @@ scan = WOMqc(
     frame_length_max = 512,#256,
     sipm_voltage = 40.7,
     LEDamplitude = 1.9, 
-    heatup_roomtemp = 22.0,#if no heatup == False else number of minutes
+    heatup_roomtemp = 21.2,#if no heatup == False else number of minutes
     plot_waveform = False,
     plot_heatmap = True,
     dry_run = False,
@@ -41,7 +41,7 @@ scan.run()
 
 
 
-#scan.run_longterm(darkcount=True, external_trigger = False)
+#scan.run_longterm(darkcount=False, external_trigger = False)
 #WOM_uncoated_no_inner_collimator = WOMqc.load("20260831_uncoated_WOM_2mmFreiburgXT_wo_inner_collimator_outer_transmission_SiPM_covered")
 #no_WOM_no_inner_collimator = WOMqc.load("20260831_wo_WOM_wo_inner_collimator_outer_transmission_SiPM_covered")
 #WOM_uncoated_no_outer_collimator = WOMqc.load("20260831_uncoated_WOM_2mmFreiburgXT_wo_outer_collimator_inner_transmission_SiPM_covered")
